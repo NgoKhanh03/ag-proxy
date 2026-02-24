@@ -17,6 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, MoreHorizontal, Pencil, Trash2, RefreshCw, Copy, Key, Shuffle, Play, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useI18n } from "@/lib/i18n";
 
 const AVAILABLE_MODELS = [
   { value: "gemini-3.1-pro-high", label: "Gemini 3.1 Pro High" },
@@ -70,6 +71,7 @@ function formatTokens(n: number) {
 
 
 export default function TunnelsPage() {
+  const { t: i18n } = useI18n();
   const [tunnels, setTunnels] = useState<Tunnel[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,7 +170,7 @@ export default function TunnelsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tokensUsed: 0 }),
     });
-    toast.success("Usage reset");
+    toast.success(i18n.tunnels.usageReset);
     fetchData();
   }
 
@@ -198,50 +200,50 @@ export default function TunnelsPage() {
       if (data.error) {
         toast.error(data.error.message || "Test failed");
       } else {
-        toast.success("Test successful");
+        toast.success(i18n.tunnels.testSuccess);
         fetchData();
       }
     } catch {
       setTestResult({ error: { message: "Network error" } });
-      toast.error("Network error");
+      toast.error(i18n.auth.networkError);
     } finally {
       setTestLoading(false);
     }
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="animate-pulse text-muted-foreground">Loading...</div></div>;
+    return <div className="flex items-center justify-center h-64"><div className="animate-pulse text-muted-foreground">{i18n.common.loading}</div></div>;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Tunnels</h1>
-          <p className="text-muted-foreground mt-1">Manage API tunnels with per-key token limits</p>
+          <h1 className="text-3xl font-bold tracking-tight">{i18n.tunnels.title}</h1>
+          <p className="text-muted-foreground mt-1">{i18n.tunnels.subtitle}</p>
         </div>
         <div className="flex gap-2">
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={openCreate} className="bg-primary text-primary-foreground">
                 <Plus className="mr-2 h-4 w-4" />
-                Create Tunnel
+                {i18n.tunnels.createTunnel}
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle>{editingId ? "Edit Tunnel" : "Create Tunnel"}</DialogTitle>
+                <DialogTitle>{editingId ? i18n.tunnels.editTunnel : i18n.tunnels.createTunnel}</DialogTitle>
                 <DialogDescription>
-                  {editingId ? "Update tunnel settings" : "Create a new API tunnel with its own key and token limit"}
+                  {editingId ? i18n.tunnels.updateDesc : i18n.tunnels.createDesc}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Name</Label>
+                  <Label>{i18n.tunnels.name}</Label>
                   <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Production, Dev Team" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Model</Label>
+                  <Label>{i18n.tunnels.model}</Label>
                   <Select value={form.model} onValueChange={(v) => setForm({ ...form, model: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -252,25 +254,25 @@ export default function TunnelsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>API Key</Label>
+                  <Label>{i18n.tunnels.apiKey}</Label>
                   <div className="flex gap-2">
                     <Input value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} placeholder="Leave empty to auto-generate" className="font-mono text-sm" />
-                    <Button variant="outline" size="icon" onClick={generateKey} title="Generate random key">
+                    <Button variant="outline" size="icon" onClick={generateKey} title={i18n.tunnels.generateKey}>
                       <Shuffle className="h-4 w-4" />
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">Must be unique. Leave empty to auto-generate on save.</p>
+                  <p className="text-xs text-muted-foreground">{i18n.tunnels.keyHint}</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Account Mode</Label>
                   <Select value={form.accountMode} onValueChange={(v) => setForm({ ...form, accountMode: v, tiedAccountId: v === "pool" ? null : form.tiedAccountId })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="pool">Account Pool</SelectItem>
-                      <SelectItem value="tied">Tied Account</SelectItem>
+                      <SelectItem value="pool">{i18n.tunnels.accountPool}</SelectItem>
+                      <SelectItem value="tied">{i18n.tunnels.tiedAccount}</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">{form.accountMode === "pool" ? "Auto-select best account from pool" : "Always use a specific account"}</p>
+                  <p className="text-xs text-muted-foreground">{form.accountMode === "pool" ? i18n.tunnels.accountPoolDesc : i18n.tunnels.tiedAccountDesc}</p>
                 </div>
                 {form.accountMode === "tied" && (
                   <div className="space-y-2">
@@ -311,18 +313,18 @@ export default function TunnelsPage() {
                   </div>
                 )}
                 <div className="space-y-2">
-                  <Label>Token Limit</Label>
+                  <Label>{i18n.tunnels.tokenLimit}</Label>
                   <Input type="number" value={form.tokenLimit} onChange={(e) => setForm({ ...form, tokenLimit: parseInt(e.target.value) || 0 })} />
-                  <p className="text-xs text-muted-foreground">{form.tokenLimit === 0 ? "Unlimited" : `${formatTokens(form.tokenLimit)} tokens`}</p>
+                  <p className="text-xs text-muted-foreground">{form.tokenLimit === 0 ? i18n.tunnels.unlimited : `${formatTokens(form.tokenLimit)} ${i18n.tunnels.tokens}`}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Switch checked={form.enabled} onCheckedChange={(v) => setForm({ ...form, enabled: v })} />
-                  <Label>Enabled</Label>
+                  <Label>{i18n.common.enabled}</Label>
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-                <Button onClick={handleSave} className="bg-primary text-primary-foreground">Save</Button>
+                <Button variant="outline" onClick={() => setDialogOpen(false)}>{i18n.common.cancel}</Button>
+                <Button onClick={handleSave} className="bg-primary text-primary-foreground">{i18n.common.save}</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -331,20 +333,20 @@ export default function TunnelsPage() {
 
       <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle>Active Tunnels</CardTitle>
-          <CardDescription>{tunnels.length} tunnel{tunnels.length !== 1 ? "s" : ""} configured</CardDescription>
+          <CardTitle>{i18n.tunnels.activeTunnels}</CardTitle>
+          <CardDescription>{tunnels.length} tunnel{tunnels.length !== 1 ? "s" : ""} {i18n.tunnels.configured}</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Model</TableHead>
-                <TableHead>API Key</TableHead>
-                <TableHead>Account</TableHead>
-                <TableHead>Usage</TableHead>
+                <TableHead>{i18n.tunnels.name}</TableHead>
+                <TableHead>{i18n.tunnels.model}</TableHead>
+                <TableHead>{i18n.tunnels.apiKey}</TableHead>
+                <TableHead>{i18n.tunnels.account}</TableHead>
+                <TableHead>{i18n.tunnels.usage}</TableHead>
 
-                <TableHead>Enabled</TableHead>
+                <TableHead>{i18n.common.enabled}</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
@@ -365,7 +367,7 @@ export default function TunnelsPage() {
                     <TableCell>
                       <div className="flex items-center gap-1">
                         <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono max-w-[140px] truncate">{t.apiKey}</code>
-                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { navigator.clipboard.writeText(t.apiKey); toast.success("Copied"); }}>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { navigator.clipboard.writeText(t.apiKey); toast.success(i18n.common.copied); }}>
                           <Copy className="h-3 w-3" />
                         </Button>
                       </div>
@@ -402,17 +404,17 @@ export default function TunnelsPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => openTest(t)}>
-                            <Play className="mr-2 h-4 w-4" />Test
+                            <Play className="mr-2 h-4 w-4" />{i18n.common.test}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openEdit(t)}>
-                            <Pencil className="mr-2 h-4 w-4" />Edit
+                            <Pencil className="mr-2 h-4 w-4" />{i18n.common.edit}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => resetUsage(t._id)}>
-                            <RefreshCw className="mr-2 h-4 w-4" />Reset Usage
+                            <RefreshCw className="mr-2 h-4 w-4" />{i18n.tunnels.resetUsage}
                           </DropdownMenuItem>
 
                           <DropdownMenuItem onClick={() => handleDelete(t._id)} className="text-destructive">
-                            <Trash2 className="mr-2 h-4 w-4" />Delete
+                            <Trash2 className="mr-2 h-4 w-4" />{i18n.common.delete}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -423,7 +425,7 @@ export default function TunnelsPage() {
               {tunnels.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                    No tunnels yet. Click &quot;Create Tunnel&quot; to get started.
+                    {i18n.tunnels.noTunnels}
                   </TableCell>
                 </TableRow>
               )}
@@ -444,11 +446,11 @@ export default function TunnelsPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Prompt</Label>
+              <Label>{i18n.tunnels.prompt}</Label>
               <Textarea value={testPrompt} onChange={(e) => setTestPrompt(e.target.value)} rows={3} placeholder="Type your message..." />
             </div>
             <Button onClick={runTest} disabled={testLoading || !testPrompt.trim()} className="w-full bg-primary text-primary-foreground">
-              {testLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sending...</> : <><Play className="mr-2 h-4 w-4" />Send Test</>}
+              {testLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{i18n.tunnels.sending}</> : <><Play className="mr-2 h-4 w-4" />{i18n.tunnels.sendTest}</>}
             </Button>
             {testResult && (
               <div className="space-y-2">

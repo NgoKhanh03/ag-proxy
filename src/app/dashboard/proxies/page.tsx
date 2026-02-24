@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Plus, MoreHorizontal, Pencil, Trash2, Upload, Wifi, WifiOff, GripVertical, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useI18n } from "@/lib/i18n";
 
 interface Proxy {
   _id: string;
@@ -72,6 +73,7 @@ function parseLines(text: string, delimiter: string): string[][] {
 }
 
 export default function ProxiesPage() {
+  const { t } = useI18n();
   const [proxies, setProxies] = useState<Proxy[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -265,7 +267,7 @@ export default function ProxiesPage() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="animate-pulse text-muted-foreground">Loading...</div></div>;
+    return <div className="flex items-center justify-center h-64"><div className="animate-pulse text-muted-foreground">{t.common.loading}</div></div>;
   }
 
   const unusedColumns = ALL_COLUMNS.filter((c) => !columns.includes(c));
@@ -274,19 +276,19 @@ export default function ProxiesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Network Proxies</h1>
-          <p className="text-muted-foreground mt-1">Manage network proxies for account connections</p>
+          <h1 className="text-3xl font-bold tracking-tight">{t.proxies.title}</h1>
+          <p className="text-muted-foreground mt-1">{t.proxies.subtitle}</p>
         </div>
         <div className="flex gap-2">
           {proxies.length > 0 && (
             <Button variant="outline" onClick={handlePingAll}>
               <Wifi className="mr-2 h-4 w-4" />
-              Ping All
+              {t.proxies.pingAll}
             </Button>
           )}
           <Button variant="outline" onClick={openImport}>
             <Upload className="mr-2 h-4 w-4" />
-            Import
+            {t.common.import}
           </Button>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
@@ -297,8 +299,8 @@ export default function ProxiesPage() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>{editingId ? "Edit Proxy" : "Add Proxy"}</DialogTitle>
-                <DialogDescription>Configure a network proxy for routing account traffic</DialogDescription>
+                <DialogTitle>{editingId ? t.proxies.editProxy : t.proxies.addProxy}</DialogTitle>
+                <DialogDescription>{t.proxies.configureProxy}</DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -338,12 +340,12 @@ export default function ProxiesPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Switch checked={form.enabled} onCheckedChange={(v) => setForm({ ...form, enabled: v })} />
-                  <Label>Enabled</Label>
+                  <Label>{t.common.enabled}</Label>
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-                <Button onClick={handleSave} className="bg-primary text-primary-foreground">Save</Button>
+                <Button variant="outline" onClick={() => setDialogOpen(false)}>{t.common.cancel}</Button>
+                <Button onClick={handleSave} className="bg-primary text-primary-foreground">{t.common.save}</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -353,14 +355,14 @@ export default function ProxiesPage() {
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Import Proxies</DialogTitle>
-            <DialogDescription>Upload a TXT or CSV file with proxy data. Delimiter is auto-detected.</DialogDescription>
+            <DialogTitle>{t.proxies.importProxies}</DialogTitle>
+            <DialogDescription>{t.proxies.importDesc}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="flex gap-2">
               <Button variant="outline" onClick={handleFileSelect}>
                 <Upload className="mr-2 h-4 w-4" />
-                Choose File
+                {t.proxies.chooseFile}
               </Button>
               <div className="flex items-center gap-2">
                 <Label className="text-sm whitespace-nowrap">Delimiter:</Label>
@@ -473,10 +475,10 @@ export default function ProxiesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setImportOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setImportOpen(false)}>{t.common.cancel}</Button>
             <Button onClick={handleImport} disabled={parsedRows.length === 0 || importing}>
               {importing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Import {parsedRows.length} Proxies
+              {t.common.import} {parsedRows.length} Proxies
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -547,13 +549,13 @@ export default function ProxiesPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => handlePing(proxy)}>
-                            <Wifi className="mr-2 h-4 w-4" />Ping
+                            <Wifi className="mr-2 h-4 w-4" />{t.proxies.ping}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openEdit(proxy)}>
-                            <Pencil className="mr-2 h-4 w-4" />Edit
+                            <Pencil className="mr-2 h-4 w-4" />{t.common.edit}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDelete(proxy._id)} className="text-destructive">
-                            <Trash2 className="mr-2 h-4 w-4" />Delete
+                            <Trash2 className="mr-2 h-4 w-4" />{t.common.delete}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -564,7 +566,7 @@ export default function ProxiesPage() {
               {proxies.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                    No proxies configured yet
+                    {t.proxies.noProxies}
                   </TableCell>
                 </TableRow>
               )}

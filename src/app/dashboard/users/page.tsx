@@ -14,6 +14,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Plus, MoreHorizontal, Trash2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
+import { useI18n } from "@/lib/i18n";
 
 interface User {
   _id: string;
@@ -23,6 +24,7 @@ interface User {
 }
 
 export default function UsersPage() {
+  const { t } = useI18n();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -57,7 +59,7 @@ export default function UsersPage() {
         toast.error(data.error || "Failed to add user");
         return;
       }
-      toast.success("User added");
+      toast.success(t.users.userAdded);
       setDialogOpen(false);
       setNewUsername("");
       setNewPassword("");
@@ -69,9 +71,9 @@ export default function UsersPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this user?")) return;
+    if (!confirm(t.users.deleteConfirm)) return;
     await fetch(`/api/users/${id}`, { method: "DELETE" });
-    toast.success("User deleted");
+    toast.success(t.users.userDeleted);
     fetchData();
   }
 
@@ -82,57 +84,57 @@ export default function UsersPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role: newRole }),
     });
-    toast.success(`Role updated to ${newRole}`);
+    toast.success(`${t.users.roleUpdated} ${newRole}`);
     fetchData();
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="animate-pulse text-muted-foreground">Loading...</div></div>;
+    return <div className="flex items-center justify-center h-64"><div className="animate-pulse text-muted-foreground">{t.common.loading}</div></div>;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
-          <p className="text-muted-foreground mt-1">Manage dashboard users and permissions</p>
+          <h1 className="text-3xl font-bold tracking-tight">{t.users.title}</h1>
+          <p className="text-muted-foreground mt-1">{t.users.subtitle}</p>
         </div>
         <div className="flex gap-2">
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button className="bg-primary text-primary-foreground">
                 <Plus className="mr-2 h-4 w-4" />
-                Add User
+                {t.users.addUser}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add User</DialogTitle>
-                <DialogDescription>Create a new dashboard user</DialogDescription>
+                <DialogTitle>{t.users.addUser}</DialogTitle>
+                <DialogDescription>{t.users.createUser}</DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Username</Label>
+                  <Label>{t.users.username}</Label>
                   <Input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="username" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Password</Label>
+                  <Label>{t.users.password}</Label>
                   <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Role</Label>
+                  <Label>{t.users.role}</Label>
                   <Select value={newRole} onValueChange={setNewRole}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="user">User</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="user">{t.users.user}</SelectItem>
+                      <SelectItem value="admin">{t.users.admin}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-                <Button onClick={handleAdd} className="bg-primary text-primary-foreground">Add User</Button>
+                <Button variant="outline" onClick={() => setDialogOpen(false)}>{t.common.cancel}</Button>
+                <Button onClick={handleAdd} className="bg-primary text-primary-foreground">{t.users.addUser}</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -141,16 +143,16 @@ export default function UsersPage() {
 
       <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle>Users</CardTitle>
-          <CardDescription>{users.length} user{users.length !== 1 ? "s" : ""} registered</CardDescription>
+          <CardTitle>{t.users.userList}</CardTitle>
+          <CardDescription>{users.length} user{users.length !== 1 ? "s" : ""} {t.users.registered}</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Created</TableHead>
+                <TableHead>{t.users.username}</TableHead>
+                <TableHead>{t.users.role}</TableHead>
+                <TableHead>{t.users.created}</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
@@ -184,10 +186,10 @@ export default function UsersPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => toggleRole(user)}>
                           <ShieldCheck className="mr-2 h-4 w-4" />
-                          {user.role === "admin" ? "Demote to User" : "Promote to Admin"}
+                          {user.role === "admin" ? t.users.demoteUser : t.users.promoteAdmin}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleDelete(user._id)} className="text-destructive">
-                          <Trash2 className="mr-2 h-4 w-4" />Delete
+                          <Trash2 className="mr-2 h-4 w-4" />{t.common.delete}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

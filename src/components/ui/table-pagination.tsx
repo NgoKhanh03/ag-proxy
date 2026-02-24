@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 
 interface TablePaginationProps {
   page: number;
@@ -13,13 +14,14 @@ interface TablePaginationProps {
 }
 
 export function TablePagination({ page, totalPages, total, pageSize, onPageChange }: TablePaginationProps) {
+  const { t } = useI18n();
   if (total <= pageSize) return null;
   const start = (page - 1) * pageSize + 1;
   const end = Math.min(page * pageSize, total);
   return (
     <div className="flex items-center justify-between pt-4">
       <p className="text-sm text-muted-foreground">
-        {start}–{end} of {total}
+        {start}–{end} {t.pagination.of} {total}
       </p>
       <div className="flex items-center gap-1">
         <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>

@@ -25,24 +25,31 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LayoutDashboard, Users, Network, Shield, Settings, LogOut, Zap, ChevronUp, Moon, Sun } from "lucide-react";
+import { LayoutDashboard, Users, Network, Shield, Settings, LogOut, Zap, ChevronUp, Moon, Sun, Globe, Check } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
+import { useI18n, type Locale } from "@/lib/i18n";
 
-const navItems = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { title: "Accounts", href: "/dashboard/accounts", icon: Users },
-  { title: "Proxies", href: "/dashboard/proxies", icon: Network },
-  { title: "Tunnels", href: "/dashboard/tunnel", icon: Shield },
-  { title: "Users", href: "/dashboard/users", icon: Settings },
+const NAV_KEYS = ["dashboard", "accounts", "proxies", "tunnels", "users"] as const;
+const NAV_HREFS = ["/dashboard", "/dashboard/accounts", "/dashboard/proxies", "/dashboard/tunnel", "/dashboard/users"];
+const NAV_ICONS = [LayoutDashboard, Users, Network, Shield, Settings];
+
+const LOCALES: { value: Locale; flag: string }[] = [
+  { value: "en", flag: "🇺🇸" },
+  { value: "vi", flag: "🇻🇳" },
+  { value: "zh", flag: "🇨🇳" },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
+  const { locale, setLocale, t } = useI18n();
   const [user, setUser] = useState<{ username: string; role: string } | null>(null);
 
   useEffect(() => {
@@ -58,7 +65,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "logout" }),
     });
-    toast.success("Logged out");
+    toast.success(t.auth.loggedOut);
     router.push("/login");
   }
 
@@ -75,7 +82,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   </div>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-semibold">AG Proxy</span>
-                    <span className="truncate text-xs text-muted-foreground">AI Account Manager</span>
+                    <span className="truncate text-xs text-muted-foreground">{t.nav.subtitle}</span>
                   </div>
                 </Link>
               </SidebarMenuButton>
@@ -84,15 +91,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>Management</SidebarGroupLabel>
+            <SidebarGroupLabel>{t.nav.management}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {navItems.map((item) => (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton asChild isActive={pathname === item.href} tooltip={item.title}>
-                      <Link href={item.href}>
-                        <item.icon />
-                        <span>{item.title}</span>
+                {NAV_KEYS.map((key, i) => (
+                  <SidebarMenuItem key={key}>
+                    <SidebarMenuButton asChild isActive={pathname === NAV_HREFS[i]} tooltip={t.nav[key]}>
+                      <Link href={NAV_HREFS[i]}>
+                        {(() => { const Icon = NAV_ICONS[i]; return <Icon />; })()}
+                        <span>{t.nav[key]}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -120,13 +127,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   </SidebarMenuButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="top" align="end" className="w-48">
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <Globe className="mr-2 h-4 w-4" />
+                      {t.language.label}
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      {LOCALES.map((l) => (
+                        <DropdownMenuItem key={l.value} onClick={() => setLocale(l.value)}>
+                          <span className="mr-2">{l.flag}</span>
+                          {t.language[l.value]}
+                          {locale === l.value && <Check className="ml-auto h-4 w-4" />}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
                   <DropdownMenuItem onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
                     {theme === "dark" ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
-                    {theme === "dark" ? "Light Mode" : "Dark Mode"}
+                    {theme === "dark" ? t.auth.lightMode : t.auth.darkMode}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleLogout}>
                     <LogOut className="mr-2 h-4 w-4" />
-                    Sign Out
+                    {t.auth.signOut}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

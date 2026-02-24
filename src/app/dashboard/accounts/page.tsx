@@ -18,6 +18,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Plus, MoreHorizontal, Pencil, Trash2, Chrome, Sparkles, Bot, ArrowLeftRight, Download, Upload, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { useI18n } from "@/lib/i18n";
 
 const MODEL_LABELS: Record<string, string> = {
   "gemini-3.1-pro-high": "G3.1 Pro High",
@@ -167,6 +168,7 @@ const emptyAccount = {
 };
 
 function AccountsContent() {
+  const { t } = useI18n();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [proxies, setProxies] = useState<Proxy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -283,7 +285,7 @@ function AccountsContent() {
 
   async function handleRefresh(id: string) {
     try {
-      toast.loading("Refreshing account...", { id: "refresh" });
+      toast.loading(t.accounts.refreshing, { id: "refresh" });
       const res = await fetch("/api/accounts/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -291,13 +293,13 @@ function AccountsContent() {
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success(`Refreshed: ${data.tier} tier`, { id: "refresh" });
+        toast.success(`${t.accounts.refreshed}: ${data.tier} tier`, { id: "refresh" });
         fetchData();
       } else {
-        toast.error(data.error || "Refresh failed", { id: "refresh" });
+        toast.error(data.error || t.accounts.refreshFailed, { id: "refresh" });
       }
     } catch {
-      toast.error("Failed to refresh", { id: "refresh" });
+      toast.error(t.accounts.refreshFailed, { id: "refresh" });
     }
   }
 
@@ -349,30 +351,30 @@ function AccountsContent() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="animate-pulse text-muted-foreground">Loading...</div></div>;
+    return <div className="flex items-center justify-center h-64"><div className="animate-pulse text-muted-foreground">{t.common.loading}</div></div>;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Accounts</h1>
-          <p className="text-muted-foreground mt-1">Manage connected Google AI accounts</p>
+          <h1 className="text-3xl font-bold tracking-tight">{t.nav.accounts}</h1>
+          <p className="text-muted-foreground mt-1">{t.accounts.subtitle}</p>
         </div>
         <div className="flex gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline">
                 <ArrowLeftRight className="mr-2 h-4 w-4" />
-                Import / Export
+                {t.accounts.importExport}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={handleExport}>
-                <Download className="mr-2 h-4 w-4" />Export
+                <Download className="mr-2 h-4 w-4" />{t.common.export}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleImport}>
-                <Upload className="mr-2 h-4 w-4" />Import
+                <Upload className="mr-2 h-4 w-4" />{t.common.import}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -462,19 +464,19 @@ function AccountsContent() {
 
       <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle>Connected Accounts</CardTitle>
+          <CardTitle>{t.accounts.connectedAccounts}</CardTitle>
           <CardDescription>{accounts.length} account{accounts.length !== 1 ? "s" : ""} configured</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Account</TableHead>
-                <TableHead>Tier</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Quotas</TableHead>
-                <TableHead>Proxy</TableHead>
-                <TableHead>Rotation</TableHead>
+                <TableHead>{t.nav.accounts}</TableHead>
+                <TableHead>{t.accounts.tier}</TableHead>
+                <TableHead>{t.accounts.status}</TableHead>
+                <TableHead>{t.accounts.quotas}</TableHead>
+                <TableHead>{t.accounts.proxy}</TableHead>
+                <TableHead>{t.accounts.rotation}</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
@@ -527,16 +529,16 @@ function AccountsContent() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => handleRefresh(acc._id)}>
-                          <RefreshCw className="mr-2 h-4 w-4" />Refresh
+                          <RefreshCw className="mr-2 h-4 w-4" />{t.accounts.refresh}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleSwitch(acc._id)}>
-                          <ArrowLeftRight className="mr-2 h-4 w-4" />Switch To
+                          <ArrowLeftRight className="mr-2 h-4 w-4" />{t.accounts.switchTo}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => openEdit(acc)}>
-                          <Pencil className="mr-2 h-4 w-4" />Edit
+                          <Pencil className="mr-2 h-4 w-4" />{t.common.edit}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleDelete(acc._id)} className="text-destructive">
-                          <Trash2 className="mr-2 h-4 w-4" />Delete
+                          <Trash2 className="mr-2 h-4 w-4" />{t.common.delete}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -546,7 +548,7 @@ function AccountsContent() {
               {accounts.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                    No accounts yet. Click &quot;Add Account&quot; to get started.
+                    {t.accounts.noAccounts}
                   </TableCell>
                 </TableRow>
               )}

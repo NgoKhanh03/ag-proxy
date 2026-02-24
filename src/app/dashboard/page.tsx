@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Users, Network, Plus, Zap, Sparkles, Bot } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 
 const MODEL_LABELS: Record<string, string> = {
   "gemini-3.1-pro-high": "Gemini 3.1 Pro High",
@@ -97,6 +98,7 @@ interface Proxy {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { t } = useI18n();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [proxies, setProxies] = useState<Proxy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,7 +119,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-pulse text-muted-foreground">Loading dashboard...</div>
+        <div className="animate-pulse text-muted-foreground">{t.dashboard.loadingDashboard}</div>
       </div>
     );
   }
@@ -130,24 +132,24 @@ export default function DashboardPage() {
             <div className="mx-auto w-20 h-20 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/25 animate-pulse">
               <Zap className="w-10 h-10 text-white" />
             </div>
-            <CardTitle className="text-2xl font-bold">Welcome to AG Proxy</CardTitle>
+            <CardTitle className="text-2xl font-bold">{t.dashboard.welcome}</CardTitle>
             <CardDescription className="text-base">
-              No accounts configured yet. Add your first Google AI account to start proxying API requests.
+              {t.dashboard.welcomeDesc}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 text-sm text-muted-foreground">
               <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
                 <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold shrink-0 mt-0.5">1</div>
-                <div><span className="font-medium text-foreground">Add Google Account</span> — Connect via OAuth or import tokens</div>
+                <div><span className="font-medium text-foreground">{t.dashboard.step1Title}</span> — {t.dashboard.step1Desc}</div>
               </div>
               <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
                 <div className="w-6 h-6 rounded-full bg-blue-600/20 flex items-center justify-center text-blue-400 text-xs font-bold shrink-0 mt-0.5">2</div>
-                <div><span className="font-medium text-foreground">Configure Tunnel</span> — Set up API auth, model routing & rotation</div>
+                <div><span className="font-medium text-foreground">{t.dashboard.step2Title}</span> — {t.dashboard.step2Desc}</div>
               </div>
               <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
                 <div className="w-6 h-6 rounded-full bg-emerald-600/20 flex items-center justify-center text-emerald-400 text-xs font-bold shrink-0 mt-0.5">3</div>
-                <div><span className="font-medium text-foreground">Start Proxying</span> — Use the OpenAI-compatible endpoint</div>
+                <div><span className="font-medium text-foreground">{t.dashboard.step3Title}</span> — {t.dashboard.step3Desc}</div>
               </div>
             </div>
             <Button
@@ -155,7 +157,7 @@ export default function DashboardPage() {
               onClick={() => router.push("/dashboard/accounts")}
             >
               <Plus className="mr-2 h-4 w-4" />
-              Add First Account
+              {t.dashboard.addFirstAccount}
             </Button>
           </CardContent>
         </Card>
@@ -184,42 +186,42 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Overview of your AI proxy system</p>
+        <h1 className="text-3xl font-bold tracking-tight">{t.dashboard.title}</h1>
+        <p className="text-muted-foreground mt-1">{t.dashboard.subtitle}</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Accounts</CardTitle>
+            <CardTitle className="text-sm font-medium">{t.dashboard.accounts}</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{accounts.length}</div>
             <div className="flex items-center gap-3 mt-1">
-              <span className="text-xs text-emerald-500">{activeCount} active</span>
-              {suspendedCount > 0 && <span className="text-xs text-destructive">{suspendedCount} suspended</span>}
-              <span className="text-xs text-muted-foreground">{rotatingCount} rotating</span>
+              <span className="text-xs text-emerald-500">{activeCount} {t.dashboard.active}</span>
+              {suspendedCount > 0 && <span className="text-xs text-destructive">{suspendedCount} {t.dashboard.suspended}</span>}
+              <span className="text-xs text-muted-foreground">{rotatingCount} {t.dashboard.rotating}</span>
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Proxies</CardTitle>
+            <CardTitle className="text-sm font-medium">{t.dashboard.proxies}</CardTitle>
             <Network className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{proxies.length}</div>
             <p className="text-xs text-emerald-500 mt-1">
-              {proxies.filter((p) => p.enabled).length} enabled
+              {proxies.filter((p) => p.enabled).length} {t.dashboard.enabled}
             </p>
           </CardContent>
         </Card>
 
         <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Models Available</CardTitle>
+            <CardTitle className="text-sm font-medium">{t.dashboard.modelsAvailable}</CardTitle>
             <Sparkles className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -252,7 +254,7 @@ export default function DashboardPage() {
       ) : (
         <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
           <CardContent className="py-12">
-            <p className="text-sm text-muted-foreground text-center">No quota data available</p>
+            <p className="text-sm text-muted-foreground text-center">{t.dashboard.noQuotaData}</p>
           </CardContent>
         </Card>
       )}
