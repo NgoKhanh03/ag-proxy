@@ -28,11 +28,6 @@
                     "type": "number",
                     "default": 23816,
                     "description": "Port for the local HTTP server"
-                },
-                "ag-switch.proxyUrl": {
-                    "type": "string",
-                    "default": "http://localhost:3001",
-                    "description": "URL of the ag-proxy server"
                 }
             }
         }
