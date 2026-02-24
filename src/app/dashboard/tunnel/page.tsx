@@ -218,9 +218,6 @@ export default function TunnelsPage() {
           <p className="text-muted-foreground mt-1">Manage API tunnels with per-key token limits</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="icon" onClick={fetchData}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={openCreate} className="bg-primary text-primary-foreground">
