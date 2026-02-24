@@ -30,7 +30,7 @@ jobs:
       - name: Install & build
         working-directory: extension
         run: |
-          npm ci
+          npm install
           npm run build
           npm run package
 
