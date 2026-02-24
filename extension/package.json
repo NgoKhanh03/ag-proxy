@@ -1,0 +1,54 @@
+{
+    "name": "ag-switch",
+    "displayName": "AG Switch",
+    "description": "Switch Antigravity accounts from the ag-proxy web dashboard",
+    "version": "0.1.0",
+    "publisher": "ag-proxy",
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [
+        "onStartupFinished"
+    ],
+    "main": "./dist/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "ag-switch.showStatus",
+                "title": "AG Switch: Show Status"
+            }
+        ],
+        "configuration": {
+            "title": "AG Switch",
+            "properties": {
+                "ag-switch.port": {
+                    "type": "number",
+                    "default": 23816,
+                    "description": "Port for the local HTTP server"
+                },
+                "ag-switch.proxyUrl": {
+                    "type": "string",
+                    "default": "http://localhost:3001",
+                    "description": "URL of the ag-proxy server"
+                }
+            }
+        }
+    },
+    "scripts": {
+        "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:better-sqlite3 --format=cjs --platform=node",
+        "watch": "npm run build -- --watch",
+        "package": "npx -y @vscode/vsce package --allow-missing-repository"
+    },
+    "devDependencies": {
+        "@types/better-sqlite3": "^7.6.8",
+        "@types/node": "^20.11.0",
+        "@types/vscode": "^1.85.0",
+        "esbuild": "^0.24.0"
+    },
+    "dependencies": {
+        "better-sqlite3": "^11.7.0"
+    }
+}
