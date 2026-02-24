@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Plus, MoreHorizontal, Pencil, Trash2, RefreshCw, RotateCw, Chrome, Sparkles, Bot, ArrowLeftRight, Download, Upload } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Trash2, RotateCw, Chrome, Sparkles, Bot, ArrowLeftRight, Download, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 const MODEL_LABELS: Record<string, string> = {
@@ -357,9 +357,6 @@ function AccountsContent() {
           <p className="text-muted-foreground mt-1">Manage connected Google AI accounts</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="icon" onClick={fetchData}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline">

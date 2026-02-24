@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Plus, MoreHorizontal, Pencil, Trash2, RefreshCw, Upload, Wifi, WifiOff, GripVertical, Loader2 } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Trash2, Upload, Wifi, WifiOff, GripVertical, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface Proxy {
@@ -275,9 +275,6 @@ export default function ProxiesPage() {
           <p className="text-muted-foreground mt-1">Manage network proxies for account connections</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="icon" onClick={fetchData}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
           {proxies.length > 0 && (
             <Button variant="outline" onClick={handlePingAll}>
               <Wifi className="mr-2 h-4 w-4" />
