@@ -38,17 +38,14 @@
         }
     },
     "scripts": {
-        "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:better-sqlite3 --format=cjs --platform=node",
+        "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node && cp node_modules/sql.js/dist/sql-wasm.wasm dist/",
         "watch": "npm run build -- --watch",
         "package": "npx -y @vscode/vsce package --allow-missing-repository"
     },
     "devDependencies": {
-        "@types/better-sqlite3": "^7.6.8",
         "@types/node": "^20.11.0",
         "@types/vscode": "^1.85.0",
-        "esbuild": "^0.24.0"
-    },
-    "dependencies": {
-        "better-sqlite3": "^11.7.0"
+        "esbuild": "^0.24.0",
+        "sql.js": "^1.12.0"
     }
 }

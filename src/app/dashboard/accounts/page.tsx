@@ -257,12 +257,22 @@ function AccountsContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accountId: id }),
       });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success(data.message || "Account switched! Antigravity will reload.", { id: "switch" });
-      } else {
-        toast.error(data.error || "Switch failed", { id: "switch" });
+      const payload = await res.json();
+      if (!res.ok) {
+        toast.error(payload.error || "Failed to prepare switch", { id: "switch" });
+        return;
       }
+      const extRes = await fetch("http://127.0.0.1:23816/switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).catch(() => null);
+      if (!extRes || !extRes.ok) {
+        toast.error("AG Switch extension is not running. Install and enable it in Antigravity.", { id: "switch" });
+        return;
+      }
+      const result = await extRes.json();
+      toast.success(result.message || "Account switched!", { id: "switch" });
     } catch {
       toast.error("Failed to connect", { id: "switch" });
     }

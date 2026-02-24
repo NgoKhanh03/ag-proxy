@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as http from "http";
 import * as path from "path";
 import * as fs from "fs";
+const initSqlJs = require("sql.js");
 
 let server: http.Server | null = null;
 let statusBarItem: vscode.StatusBarItem;
@@ -53,11 +54,29 @@ function createOAuthInfo(accessToken: string, refreshToken: string, expiry: numb
   return Buffer.concat([field1, field2, field3, field4]);
 }
 
-function injectTokenNewFormat(dbPath: string, accessToken: string, refreshToken: string, expiry: number): void {
-  const Database = require("better-sqlite3");
-  const db = new Database(dbPath);
+async function withDatabase(dbPath: string, fn: (db: any) => void): Promise<void> {
+  const SQL = await initSqlJs({
+    locateFile: (file: string) => path.join(__dirname, file),
+  });
+  let db: any;
+  if (fs.existsSync(dbPath)) {
+    const buffer = fs.readFileSync(dbPath);
+    db = new SQL.Database(buffer);
+  } else {
+    db = new SQL.Database();
+  }
   try {
-    db.exec("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT)");
+    fn(db);
+    const data = db.export();
+    fs.writeFileSync(dbPath, Buffer.from(data));
+  } finally {
+    db.close();
+  }
+}
+
+async function injectTokenNewFormat(dbPath: string, accessToken: string, refreshToken: string, expiry: number): Promise<void> {
+  await withDatabase(dbPath, (db) => {
+    db.run("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT)");
     const oauthInfo = createOAuthInfo(accessToken, refreshToken, expiry);
     const oauthInfoB64 = oauthInfo.toString("base64");
     const inner2 = encodeStringField(1, oauthInfoB64);
@@ -65,11 +84,9 @@ function injectTokenNewFormat(dbPath: string, accessToken: string, refreshToken:
     const inner = Buffer.concat([inner1, encodeLenDelimField(2, inner2)]);
     const outer = encodeLenDelimField(1, inner);
     const outerB64 = outer.toString("base64");
-    db.prepare("INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)").run("antigravityUnifiedStateSync.oauthToken", outerB64);
-    db.prepare("INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)").run("antigravityOnboarding", "true");
-  } finally {
-    db.close();
-  }
+    db.run("INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", ["antigravityUnifiedStateSync.oauthToken", outerB64]);
+    db.run("INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", ["antigravityOnboarding", "true"]);
+  });
 }
 
 function writeDeviceProfile(storagePath: string, profile: DeviceProfile): void {
@@ -94,16 +111,15 @@ function writeDeviceProfile(storagePath: string, profile: DeviceProfile): void {
   syncServiceMachineId(path.join(path.dirname(storagePath), "state.vscdb"), profile.devDeviceId);
 }
 
-function syncServiceMachineId(dbPath: string, serviceId: string): void {
+async function syncServiceMachineId(dbPath: string, serviceId: string): Promise<void> {
   if (!fs.existsSync(dbPath)) {
     return;
   }
   try {
-    const Database = require("better-sqlite3");
-    const db = new Database(dbPath);
-    db.exec("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT)");
-    db.prepare("INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)").run("storage.serviceMachineId", serviceId);
-    db.close();
+    await withDatabase(dbPath, (db) => {
+      db.run("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT)");
+      db.run("INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)", ["storage.serviceMachineId", serviceId]);
+    });
   } catch {
   }
 }
@@ -112,7 +128,7 @@ function getGlobalStoragePath(context: vscode.ExtensionContext): string {
   return path.dirname(context.globalStorageUri.fsPath);
 }
 
-function performSwitch(context: vscode.ExtensionContext, payload: SwitchPayload): { ok: boolean; error?: string } {
+async function performSwitch(context: vscode.ExtensionContext, payload: SwitchPayload): Promise<{ ok: boolean; error?: string }> {
   try {
     const globalStorage = getGlobalStoragePath(context);
     const storagePath = path.join(globalStorage, "storage.json");
@@ -120,7 +136,7 @@ function performSwitch(context: vscode.ExtensionContext, payload: SwitchPayload)
     if (payload.deviceProfile) {
       writeDeviceProfile(storagePath, payload.deviceProfile);
     }
-    injectTokenNewFormat(dbPath, payload.accessToken, payload.refreshToken, payload.expiryTimestamp);
+    await injectTokenNewFormat(dbPath, payload.accessToken, payload.refreshToken, payload.expiryTimestamp);
     return { ok: true };
   } catch (e: any) {
     return { ok: false, error: e.message || String(e) };
@@ -169,7 +185,7 @@ function startServer(context: vscode.ExtensionContext) {
           json(res, 400, { error: "Missing required fields: accessToken, refreshToken, email" });
           return;
         }
-        const result = performSwitch(context, payload);
+        const result = await performSwitch(context, payload);
         if (result.ok) {
           json(res, 200, { ok: true, message: `Switched to ${payload.email}` });
           vscode.window.showInformationMessage(`AG Switch: Switching to ${payload.email}...`);

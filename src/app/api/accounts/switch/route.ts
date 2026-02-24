@@ -3,7 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Account } from "@/lib/models/account";
 import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_TOKEN_URL } from "@/lib/google-oauth";
 
-async function refreshToken(token: string) {
+async function refreshAccessToken(token: string) {
   const res = await fetch(GOOGLE_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -31,44 +31,20 @@ export async function POST(req: NextRequest) {
     }
 
     let accessToken = account.accessToken;
-    const refreshed = await refreshToken(account.refreshToken);
+    const refreshed = await refreshAccessToken(account.refreshToken);
     if (refreshed?.access_token) {
       accessToken = refreshed.access_token;
       account.accessToken = accessToken;
       await account.save();
     }
 
-    const payload = {
+    return NextResponse.json({
       accessToken,
       refreshToken: account.refreshToken,
       expiryTimestamp: Math.floor(Date.now() / 1000) + 3600,
       email: account.email,
-    };
-
-    const extensionPort = 23816;
-    const extensionRes = await fetch(`http://127.0.0.1:${extensionPort}/switch`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
     });
-
-    if (!extensionRes.ok) {
-      const err = await extensionRes.json().catch(() => ({}));
-      return NextResponse.json(
-        { error: "Extension switch failed", details: err },
-        { status: 502 }
-      );
-    }
-
-    const result = await extensionRes.json();
-    return NextResponse.json(result);
   } catch (error: any) {
-    if (error.cause?.code === "ECONNREFUSED") {
-      return NextResponse.json(
-        { error: "AG Switch extension is not running. Install and enable it in Antigravity." },
-        { status: 503 }
-      );
-    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
