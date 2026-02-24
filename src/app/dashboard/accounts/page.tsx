@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Plus, MoreHorizontal, Pencil, Trash2, Chrome, Sparkles, Bot, ArrowLeftRight, Download, Upload, RefreshCw } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Trash2, Chrome, Sparkles, Bot, ArrowLeftRight, Download, Upload, RefreshCw, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
 
@@ -175,6 +175,10 @@ function AccountsContent() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyAccount);
+  const [switchDialogOpen, setSwitchDialogOpen] = useState(false);
+  const [switchAccountId, setSwitchAccountId] = useState<string | null>(null);
+  const [extensionStatus, setExtensionStatus] = useState<"checking" | "connected" | "disconnected">("checking");
+  const [switching, setSwitching] = useState(false);
 
   const fetchData = useCallback(async () => {
     const [accs, prxs] = await Promise.all([
@@ -254,17 +258,29 @@ function AccountsContent() {
     fetchData();
   }
 
-  async function handleSwitch(id: string) {
+  function openSwitchDialog(id: string) {
+    setSwitchAccountId(id);
+    setSwitchDialogOpen(true);
+    setExtensionStatus("checking");
+    setSwitching(false);
+    fetch("http://127.0.0.1:23816/health", { signal: AbortSignal.timeout(3000) })
+      .then((r) => r.ok ? setExtensionStatus("connected") : setExtensionStatus("disconnected"))
+      .catch(() => setExtensionStatus("disconnected"));
+  }
+
+  async function confirmSwitch() {
+    if (!switchAccountId) return;
     try {
-      toast.loading("Switching account...", { id: "switch" });
+      setSwitching(true);
       const res = await fetch("/api/accounts/switch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountId: id }),
+        body: JSON.stringify({ accountId: switchAccountId }),
       });
       const payload = await res.json();
       if (!res.ok) {
-        toast.error(payload.error || "Failed to prepare switch", { id: "switch" });
+        toast.error(payload.error || "Failed to prepare switch");
+        setSwitching(false);
         return;
       }
       const extRes = await fetch("http://127.0.0.1:23816/switch", {
@@ -273,13 +289,17 @@ function AccountsContent() {
         body: JSON.stringify(payload),
       }).catch(() => null);
       if (!extRes || !extRes.ok) {
-        toast.error("AG Switch extension is not running. Install and enable it in Antigravity.", { id: "switch" });
+        toast.error(t.accounts.extensionNotRunning);
+        setSwitching(false);
         return;
       }
       const result = await extRes.json();
-      toast.success(result.message || "Account switched!", { id: "switch" });
+      toast.success(result.message || t.accounts.switchSuccess);
+      setSwitchDialogOpen(false);
     } catch {
-      toast.error("Failed to connect", { id: "switch" });
+      toast.error("Failed to connect");
+    } finally {
+      setSwitching(false);
     }
   }
 
@@ -531,7 +551,7 @@ function AccountsContent() {
                         <DropdownMenuItem onClick={() => handleRefresh(acc._id)}>
                           <RefreshCw className="mr-2 h-4 w-4" />{t.accounts.refresh}
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleSwitch(acc._id)}>
+                        <DropdownMenuItem onClick={() => openSwitchDialog(acc._id)}>
                           <ArrowLeftRight className="mr-2 h-4 w-4" />{t.accounts.switchTo}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => openEdit(acc)}>
@@ -557,6 +577,47 @@ function AccountsContent() {
           <TablePagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onPageChange={setPage} />
         </CardContent>
       </Card>
+
+      <Dialog open={switchDialogOpen} onOpenChange={setSwitchDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t.accounts.switchTitle}</DialogTitle>
+            <DialogDescription>{t.accounts.switchDesc}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {t.accounts.switchHowItWorks}
+            </p>
+            <div className="flex items-center gap-3 rounded-lg border p-3">
+              {extensionStatus === "checking" && (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">{t.accounts.extensionChecking}</span>
+                </>
+              )}
+              {extensionStatus === "connected" && (
+                <>
+                  <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                  <span className="text-sm text-emerald-500">{t.accounts.extensionConnected}</span>
+                </>
+              )}
+              {extensionStatus === "disconnected" && (
+                <>
+                  <XCircle className="h-5 w-5 text-destructive" />
+                  <span className="text-sm text-destructive">{t.accounts.extensionNotConnected}</span>
+                </>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSwitchDialogOpen(false)}>{t.common.cancel}</Button>
+            <Button onClick={confirmSwitch} disabled={extensionStatus !== "connected" || switching}>
+              {switching && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t.accounts.switchConfirm}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

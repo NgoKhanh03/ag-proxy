@@ -25,9 +25,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { LayoutDashboard, Users, Network, Shield, Settings, LogOut, Zap, ChevronUp, Moon, Sun, Globe, Check } from "lucide-react";
@@ -127,25 +124,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   </SidebarMenuButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="top" align="end" className="w-48">
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger>
-                      <Globe className="mr-2 h-4 w-4" />
-                      {t.language.label}
-                    </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent>
-                      {LOCALES.map((l) => (
-                        <DropdownMenuItem key={l.value} onClick={() => setLocale(l.value)}>
-                          <span className="mr-2">{l.flag}</span>
-                          {t.language[l.value]}
-                          {locale === l.value && <Check className="ml-auto h-4 w-4" />}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
-                  <DropdownMenuItem onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-                    {theme === "dark" ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
-                    {theme === "dark" ? t.auth.lightMode : t.auth.darkMode}
-                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleLogout}>
                     <LogOut className="mr-2 h-4 w-4" />
                     {t.auth.signOut}
@@ -161,6 +139,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <div className="flex-1" />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <Globe className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {LOCALES.map((l) => (
+                <DropdownMenuItem key={l.value} onClick={() => setLocale(l.value)}>
+                  <span className="mr-2">{l.flag}</span>
+                  {t.language[l.value]}
+                  {locale === l.value && <Check className="ml-auto h-4 w-4" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button variant="ghost" size="icon" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
             {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
