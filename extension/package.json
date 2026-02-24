@@ -3,7 +3,7 @@
     "displayName": "AG Switch",
     "description": "Switch Antigravity accounts from the ag-proxy web dashboard",
     "version": "0.1.2",
-    "publisher": "ag-proxy",
+    "publisher": "creaton",
     "engines": {
         "vscode": "^1.85.0"
     },
