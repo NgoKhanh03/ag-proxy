@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Plus, MoreHorizontal, Pencil, Trash2, RefreshCw, RotateCw, Chrome, Sparkles, Bot, ArrowLeftRight } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Trash2, RefreshCw, RotateCw, Chrome, Sparkles, Bot, ArrowLeftRight, Download, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 const MODEL_LABELS: Record<string, string> = {
@@ -298,6 +298,53 @@ function AccountsContent() {
     }
   }
 
+  async function handleExport() {
+    try {
+      const res = await fetch("/api/accounts/export");
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ag-accounts-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${data.length} accounts`);
+    } catch {
+      toast.error("Export failed");
+    }
+  }
+
+  async function handleImport() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        toast.loading("Importing...", { id: "import" });
+        const res = await fetch("/api/accounts/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const result = await res.json();
+        if (res.ok) {
+          toast.success(`Imported ${result.created}, skipped ${result.skipped}`, { id: "import" });
+          fetchData();
+        } else {
+          toast.error(result.error || "Import failed", { id: "import" });
+        }
+      } catch {
+        toast.error("Invalid JSON file", { id: "import" });
+      }
+    };
+    input.click();
+  }
+
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="animate-pulse text-muted-foreground">Loading...</div></div>;
   }
@@ -312,6 +359,12 @@ function AccountsContent() {
         <div className="flex gap-2">
           <Button variant="outline" size="icon" onClick={fetchData}>
             <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="icon" onClick={handleExport}>
+            <Download className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="icon" onClick={handleImport}>
+            <Upload className="h-4 w-4" />
           </Button>
           <Button variant="outline" onClick={() => window.location.href = "/api/oauth/google"}>
             <Chrome className="mr-2 h-4 w-4" />
