@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { TablePagination, usePagination } from "@/components/ui/table-pagination";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -93,6 +94,8 @@ export default function ProxiesPage() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const { page, setPage, totalPages, paged, total, pageSize } = usePagination(proxies, 10);
 
   function openCreate() {
     setEditingId(null);
@@ -498,7 +501,7 @@ export default function ProxiesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {proxies.map((proxy) => {
+              {paged.map((proxy) => {
                 const ps = pinging[proxy._id];
                 return (
                   <TableRow key={proxy._id}>
@@ -567,6 +570,7 @@ export default function ProxiesPage() {
               )}
             </TableBody>
           </Table>
+          <TablePagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onPageChange={setPage} />
         </CardContent>
       </Card>
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { TablePagination, usePagination } from "@/components/ui/table-pagination";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -92,6 +93,8 @@ export default function TunnelsPage() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const { page, setPage, totalPages, paged, total, pageSize } = usePagination(tunnels, 10);
 
   function openCreate() {
     setEditingId(null);
@@ -346,7 +349,7 @@ export default function TunnelsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tunnels.map((t) => {
+              {paged.map((t) => {
                 const pct = t.tokenLimit > 0 ? Math.min(100, (t.tokensUsed / t.tokenLimit) * 100) : 0;
 
                 return (
@@ -426,6 +429,7 @@ export default function TunnelsPage() {
               )}
             </TableBody>
           </Table>
+          <TablePagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onPageChange={setPage} />
         </CardContent>
       </Card>
 

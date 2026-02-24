@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { TablePagination, usePagination } from "@/components/ui/table-pagination";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Plus, MoreHorizontal, Trash2, ShieldCheck, RefreshCw } from "lucide-react";
+import { Plus, MoreHorizontal, Trash2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 interface User {
@@ -40,6 +41,8 @@ export default function UsersPage() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const { page, setPage, totalPages, paged, total, pageSize } = usePagination(users, 10);
 
   async function handleAdd() {
     if (!newUsername || !newPassword) return;
@@ -95,9 +98,6 @@ export default function UsersPage() {
           <p className="text-muted-foreground mt-1">Manage dashboard users and permissions</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="icon" onClick={fetchData}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button className="bg-primary text-primary-foreground">
@@ -155,7 +155,7 @@ export default function UsersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((user) => (
+              {paged.map((user) => (
                 <TableRow key={user._id}>
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -196,6 +196,7 @@ export default function UsersPage() {
               ))}
             </TableBody>
           </Table>
+          <TablePagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onPageChange={setPage} />
         </CardContent>
       </Card>
     </div>

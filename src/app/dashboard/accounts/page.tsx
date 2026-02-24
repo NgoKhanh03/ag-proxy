@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, Suspense } from "react";
+import { TablePagination, usePagination } from "@/components/ui/table-pagination";
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Plus, MoreHorizontal, Pencil, Trash2, RotateCw, Chrome, Sparkles, Bot, ArrowLeftRight, Download, Upload } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Trash2, Chrome, Sparkles, Bot, ArrowLeftRight, Download, Upload, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 const MODEL_LABELS: Record<string, string> = {
@@ -187,6 +188,8 @@ function AccountsContent() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  const { page, setPage, totalPages, paged, total, pageSize } = usePagination(accounts, 10);
+
   useEffect(() => {
     if (searchParams.get("success") === "1") toast.success("Google account added successfully");
     if (searchParams.get("error")) toast.error(`OAuth failed: ${searchParams.get("error")}`);
@@ -278,9 +281,9 @@ function AccountsContent() {
     }
   }
 
-  async function handleSync(id: string) {
+  async function handleRefresh(id: string) {
     try {
-      toast.loading("Syncing account...", { id: "sync" });
+      toast.loading("Refreshing account...", { id: "refresh" });
       const res = await fetch("/api/accounts/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -288,13 +291,13 @@ function AccountsContent() {
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success(`Synced: ${data.tier} tier`, { id: "sync" });
+        toast.success(`Refreshed: ${data.tier} tier`, { id: "refresh" });
         fetchData();
       } else {
-        toast.error(data.error || "Sync failed", { id: "sync" });
+        toast.error(data.error || "Refresh failed", { id: "refresh" });
       }
     } catch {
-      toast.error("Failed to sync", { id: "sync" });
+      toast.error("Failed to refresh", { id: "refresh" });
     }
   }
 
@@ -476,7 +479,7 @@ function AccountsContent() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {accounts.map((acc) => (
+              {paged.map((acc) => (
                 <TableRow key={acc._id}>
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -523,8 +526,8 @@ function AccountsContent() {
                         <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleSync(acc._id)}>
-                          <RotateCw className="mr-2 h-4 w-4" />Sync
+                        <DropdownMenuItem onClick={() => handleRefresh(acc._id)}>
+                          <RefreshCw className="mr-2 h-4 w-4" />Refresh
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleSwitch(acc._id)}>
                           <ArrowLeftRight className="mr-2 h-4 w-4" />Switch To
@@ -549,6 +552,7 @@ function AccountsContent() {
               )}
             </TableBody>
           </Table>
+          <TablePagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onPageChange={setPage} />
         </CardContent>
       </Card>
     </div>
