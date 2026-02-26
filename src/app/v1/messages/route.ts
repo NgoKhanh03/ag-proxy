@@ -3,6 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Tunnel } from "@/lib/models/tunnel";
 import { Account } from "@/lib/models/account";
 import * as crypto from "crypto";
+import { getAntigravityUserAgent, getAntigravityVersion } from "@/lib/version";
 
 const V1_INTERNAL_URLS = [
   "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal",
@@ -10,26 +11,7 @@ const V1_INTERNAL_URLS = [
   "https://cloudcode-pa.googleapis.com/v1internal",
 ];
 
-const AG_VERSIONS = ["1.15.8", "1.16.0", "1.16.2", "1.16.5"];
-const CHROME_VERSIONS: Record<string, string> = {
-  "1.15.8": "130.0.6723.118",
-  "1.16.0": "132.0.6834.83",
-  "1.16.2": "132.0.6834.110",
-  "1.16.5": "132.0.6834.160",
-};
-const ELECTRON_VERSIONS: Record<string, string> = {
-  "1.15.8": "38.0.1",
-  "1.16.0": "39.1.2",
-  "1.16.2": "39.2.1",
-  "1.16.5": "39.2.3",
-};
-const PLATFORMS = [
-  "Macintosh; Intel Mac OS X 10_15_7",
-  "Windows NT 10.0; Win64; x64",
-  "X11; Linux x86_64",
-];
-
-const accountFingerprints = new Map<string, { machineId: string; sessionId: string; sessionTs: number; version: string; platform: string }>();
+const accountFingerprints = new Map<string, { machineId: string; sessionId: string; sessionTs: number }>();
 
 function getFingerprint(email: string) {
   const now = Date.now();
@@ -37,53 +19,23 @@ function getFingerprint(email: string) {
   if (existing && now - existing.sessionTs < 3600_000) return existing;
   const hash = crypto.createHash("sha256").update(email).digest("hex");
   const machineId = existing?.machineId || [hash.slice(0, 8), hash.slice(8, 12), hash.slice(12, 16), hash.slice(16, 20), hash.slice(20, 32)].join("-");
-  const versionIdx = parseInt(hash.slice(0, 2), 16) % AG_VERSIONS.length;
-  const platformIdx = parseInt(hash.slice(2, 4), 16) % PLATFORMS.length;
   const fp = {
     machineId,
     sessionId: crypto.randomUUID(),
     sessionTs: now,
-    version: AG_VERSIONS[versionIdx],
-    platform: PLATFORMS[platformIdx],
   };
   accountFingerprints.set(email, fp);
   return fp;
 }
 
-function buildUserAgent(fp: { version: string; platform: string }) {
-  const chrome = CHROME_VERSIONS[fp.version] || "132.0.6834.160";
-  const electron = ELECTRON_VERSIONS[fp.version] || "39.2.3";
-  return `Mozilla/5.0 (${fp.platform}) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/${fp.version} Chrome/${chrome} Electron/${electron} Safari/537.36`;
-}
-
-const MODEL_MAP: Record<string, string> = {
-  "claude-sonnet-4-6": "claude-sonnet-4-6",
-  "claude-sonnet-4-6-thinking": "claude-sonnet-4-6-thinking",
-  "claude-opus-4-6": "claude-opus-4-6-thinking",
-  "claude-opus-4-6-thinking": "claude-opus-4-6-thinking",
-  "claude-sonnet-4-20250514": "claude-sonnet-4-6",
-  "claude-opus-4-20250514": "claude-opus-4-6-thinking",
-  "claude-3-5-sonnet-20241022": "claude-sonnet-4-6",
-  "claude-3-5-haiku-20241022": "claude-sonnet-4-6",
-  "claude-3-opus-20240229": "claude-opus-4-6-thinking",
-  "claude-3-5-sonnet-latest": "claude-sonnet-4-6",
-  "claude-3-5-haiku-latest": "claude-sonnet-4-6",
-  "claude-3-opus-latest": "claude-opus-4-6-thinking",
-};
-
-function resolveModel(model: string): string {
-  return MODEL_MAP[model] || model;
-}
-
-async function fetchProjectInfo(accessToken: string, email: string): Promise<{ projectId: string }> {
-  const fp = getFingerprint(email);
+async function fetchProjectInfo(accessToken: string): Promise<{ projectId: string }> {
   const url = "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:loadCodeAssist";
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${accessToken}`,
-      "User-Agent": buildUserAgent(fp),
+      "User-Agent": getAntigravityUserAgent(),
     },
     body: JSON.stringify({ metadata: { ideType: "ANTIGRAVITY" } }),
   });
@@ -95,7 +47,7 @@ async function fetchProjectInfo(accessToken: string, email: string): Promise<{ p
 
 async function getProjectId(account: { _id: unknown; email: string; accessToken: string; projectId?: string }): Promise<string> {
   if (account.projectId) return account.projectId;
-  const { projectId } = await fetchProjectInfo(account.accessToken, account.email);
+  const { projectId } = await fetchProjectInfo(account.accessToken);
   await Account.findByIdAndUpdate(account._id, { projectId });
   return projectId;
 }
@@ -231,9 +183,8 @@ function buildV1InternalBody(
   model: string,
   projectId: string,
 ) {
-  const apiModel = resolveModel(model);
-  const isClaudeModel = apiModel.includes("claude");
-  const isThinking = apiModel.includes("thinking");
+  const isClaudeModel = model.includes("claude");
+  const isThinking = model.includes("thinking");
   const messages = cleanCacheControl(body.messages || []);
 
   const contents: AnyBlock[] = [];
@@ -298,7 +249,7 @@ function buildV1InternalBody(
     project: projectId,
     requestId: `agent-${crypto.randomUUID()}`,
     request: innerRequest,
-    model: apiModel,
+    model,
     userAgent: "antigravity",
     requestType: "agent",
   };
@@ -309,10 +260,10 @@ function buildUpstreamHeaders(accessToken: string, model: string, email: string)
   const h: Record<string, string> = {
     "Content-Type": "application/json",
     "Authorization": `Bearer ${accessToken}`,
-    "User-Agent": buildUserAgent(fp),
+    "User-Agent": getAntigravityUserAgent(),
     "x-goog-api-client": "gl-node/18.18.2 fire/0.8.6 grpc/1.10.x",
     "x-client-name": "antigravity",
-    "x-client-version": fp.version,
+    "x-client-version": getAntigravityVersion(),
     "x-machine-id": fp.machineId,
     "x-vscode-sessionid": fp.sessionId,
   };
@@ -502,7 +453,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
   const requestedModel = body.model || tunnel.model;
-  const model = resolveModel(requestedModel);
+  const model = requestedModel;
   const stream = body.stream === true;
 
   const triedAccountIds: string[] = [];

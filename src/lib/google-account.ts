@@ -1,8 +1,8 @@
 import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_TOKEN_URL } from "./google-oauth";
+import { getAntigravityUserAgent } from "./version";
 
 const CLOUD_CODE_BASE_URL = "https://daily-cloudcode-pa.sandbox.googleapis.com";
 const QUOTA_API_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
-const USER_AGENT = "antigravity/1.100.0";
 
 interface LoadCodeAssistResponse {
   cloudaicompanionProject?: string;
@@ -43,7 +43,7 @@ export async function fetchTierAndProject(accessToken: string): Promise<{ projec
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
-        "User-Agent": USER_AGENT,
+        "User-Agent": getAntigravityUserAgent(),
       },
       body: JSON.stringify({ metadata: { ideType: "ANTIGRAVITY" } }),
     });
@@ -68,7 +68,7 @@ export async function fetchQuotas(accessToken: string, projectId: string): Promi
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
-        "User-Agent": USER_AGENT,
+        "User-Agent": getAntigravityUserAgent(),
       },
       body: JSON.stringify({ project: projectId || "bamboo-precept-lgxtn" }),
     });

@@ -1,25 +1,18 @@
 import { NextResponse } from "next/server";
-
-const MODELS = [
-  "gemini-3.1-pro-high",
-  "gemini-3.1-pro-low",
-  "gemini-3-flash",
-  "gemini-2.5-pro",
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-  "claude-sonnet-4-6",
-  "claude-sonnet-4-6-thinking",
-  "claude-opus-4-6-thinking",
-];
+import { connectDB } from "@/lib/db";
+import { Account } from "@/lib/models/account";
+import { listModels } from "@/lib/cloud-code";
 
 export async function GET() {
-  return NextResponse.json({
-    object: "list",
-    data: MODELS.map((id) => ({
-      id,
-      object: "model",
-      created: 1700000000,
-      owned_by: "ag-proxy",
-    })),
-  });
+  try {
+    await connectDB();
+    const account = await Account.findOne({ status: "active", rotationEnabled: true }).sort({ rotationPriority: -1 });
+    if (!account?.accessToken) {
+      return NextResponse.json({ object: "list", data: [] });
+    }
+    const models = await listModels(account.accessToken);
+    return NextResponse.json(models);
+  } catch {
+    return NextResponse.json({ object: "list", data: [] });
+  }
 }
