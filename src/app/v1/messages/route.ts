@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { Tunnel } from "@/lib/models/tunnel";
-import { Account } from "@/lib/models/account";
+import { dbService } from "@/lib/db-service";
 import * as crypto from "crypto";
 import { getAntigravityUserAgent, getAntigravityVersion } from "@/lib/version";
-import { getValidAccessToken } from "@/lib/google-account";
+import { getValidAccessToken, fetchQuotas } from "@/lib/google-account";
 
 const V1_INTERNAL_URLS = [
   "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal",
@@ -50,12 +48,12 @@ async function getProjectId(account: { _id: unknown; email: string; accessToken:
   if (account.projectId) return account.projectId;
   const token = await getValidAccessToken(account);
   const { projectId } = await fetchProjectInfo(token);
-  await Account.findByIdAndUpdate(account._id, { projectId });
+  await dbService.account.findByIdAndUpdate(account._id, { projectId });
   return projectId;
 }
 
 async function selectAccount(model: string, excludeIds: string[] = []) {
-  const accounts = await Account.find({
+  const accounts = await dbService.account.find({
     status: "active",
     rotationEnabled: true,
     ...(excludeIds.length > 0 ? { _id: { $nin: excludeIds } } : {}),
@@ -68,7 +66,7 @@ async function selectAccount(model: string, excludeIds: string[] = []) {
     if (q !== undefined && q <= 0) {
       const resetTime = acc.quotaResets?.[model];
       if (!resetTime || resetTime > now) continue;
-      Account.findByIdAndUpdate(acc._id, { tokensUsed: 0, [`quotas.${model}`]: 100 }).exec();
+      dbService.account.findByIdAndUpdate(acc._id, { tokensUsed: 0, [`quotas.${model}`]: 100 }).exec();
     }
     const usage = acc.tokensUsed || 0;
     if (usage < bestUsage) {
@@ -437,14 +435,14 @@ function streamSseToAnthropic(sseText: string, model: string) {
 const MAX_ACCOUNT_RETRIES = 3;
 
 export async function POST(request: NextRequest) {
-  await connectDB();
+  await dbService.connect();
 
   const apiKey = request.headers.get("x-api-key") || request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!apiKey) {
     return NextResponse.json({ type: "error", error: { type: "authentication_error", message: "Missing API key" } }, { status: 401 });
   }
 
-  const tunnel = await Tunnel.findOne({ apiKey, enabled: true });
+  const tunnel = await dbService.tunnel.findOne({ apiKey, enabled: true });
   if (!tunnel) {
     return NextResponse.json({ type: "error", error: { type: "authentication_error", message: "Invalid API key" } }, { status: 401 });
   }
@@ -466,7 +464,7 @@ export async function POST(request: NextRequest) {
     let account;
     if (tunnel.accountMode === "tied" && tunnel.tiedAccountId) {
       if (attempt > 0) break;
-      account = await Account.findOne({ _id: tunnel.tiedAccountId, status: "active" });
+      account = await dbService.account.findOne({ _id: tunnel.tiedAccountId, status: "active" });
       if (!account) {
         return NextResponse.json({ type: "error", error: { type: "api_error", message: "Tied account is unavailable" } }, { status: 503 });
       }
@@ -499,8 +497,8 @@ export async function POST(request: NextRequest) {
           const totalTokens = usage.input_tokens + usage.output_tokens;
           if (totalTokens > 0) {
             Promise.all([
-              Tunnel.findByIdAndUpdate(tunnel._id, { $inc: { tokensUsed: totalTokens } }),
-              Account.findByIdAndUpdate(account._id, { $inc: { tokensUsed: totalTokens } }),
+              dbService.tunnel.findByIdAndUpdate(tunnel._id, { $inc: { tokensUsed: totalTokens } }),
+              dbService.account.findByIdAndUpdate(account._id, { $inc: { tokensUsed: totalTokens } }),
             ]).catch(() => { });
           }
           const encoder = new TextEncoder();
@@ -519,8 +517,8 @@ export async function POST(request: NextRequest) {
         const totalTokens = anthropicResponse.usage.input_tokens + anthropicResponse.usage.output_tokens;
         if (totalTokens > 0) {
           Promise.all([
-            Tunnel.findByIdAndUpdate(tunnel._id, { $inc: { tokensUsed: totalTokens } }),
-            Account.findByIdAndUpdate(account._id, { $inc: { tokensUsed: totalTokens } }),
+            dbService.tunnel.findByIdAndUpdate(tunnel._id, { $inc: { tokensUsed: totalTokens } }),
+            dbService.account.findByIdAndUpdate(account._id, { $inc: { tokensUsed: totalTokens } }),
           ]).catch(() => { });
         }
         return NextResponse.json(anthropicResponse);
@@ -541,8 +539,8 @@ export async function POST(request: NextRequest) {
               const totalTokens = usage.input_tokens + usage.output_tokens;
               if (totalTokens > 0) {
                 Promise.all([
-                  Tunnel.findByIdAndUpdate(tunnel._id, { $inc: { tokensUsed: totalTokens } }),
-                  Account.findByIdAndUpdate(account._id, { $inc: { tokensUsed: totalTokens } }),
+                  dbService.tunnel.findByIdAndUpdate(tunnel._id, { $inc: { tokensUsed: totalTokens } }),
+                  dbService.account.findByIdAndUpdate(account._id, { $inc: { tokensUsed: totalTokens } }),
                 ]).catch(() => { });
               }
               const encoder = new TextEncoder();
@@ -560,8 +558,8 @@ export async function POST(request: NextRequest) {
             const totalTokens = anthropicResponse.usage.input_tokens + anthropicResponse.usage.output_tokens;
             if (totalTokens > 0) {
               Promise.all([
-                Tunnel.findByIdAndUpdate(tunnel._id, { $inc: { tokensUsed: totalTokens } }),
-                Account.findByIdAndUpdate(account._id, { $inc: { tokensUsed: totalTokens } }),
+                dbService.tunnel.findByIdAndUpdate(tunnel._id, { $inc: { tokensUsed: totalTokens } }),
+                dbService.account.findByIdAndUpdate(account._id, { $inc: { tokensUsed: totalTokens } }),
               ]).catch(() => { });
             }
             return NextResponse.json(anthropicResponse);
@@ -570,7 +568,14 @@ export async function POST(request: NextRequest) {
         break;
       }
       if (res.status === 429) {
-        await Account.findByIdAndUpdate(account._id, { [`quotas.${model}`]: 0 });
+        fetchQuotas(accessToken, projectId).then(({ quotas, resets }) => {
+          const update: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(quotas)) update[`quotas.${k}`] = v;
+          for (const [k, v] of Object.entries(resets)) update[`quotaResets.${k}`] = v;
+          if (Object.keys(update).length > 0) {
+            dbService.account.findByIdAndUpdate(account._id, update).exec();
+          }
+        }).catch(() => { });
         break;
       }
       if (res.status >= 500) continue;

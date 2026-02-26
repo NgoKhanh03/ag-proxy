@@ -59,9 +59,10 @@ export async function getValidAccessToken(account: {
       const result = await refreshAccessToken(account.refreshToken);
       if (!result) return account.accessToken;
 
-      const { Account } = await import("./models/account");
+      const { dbService } = await import("./db-service");
+      await dbService.connect();
       const newExpiresAt = new Date(Date.now() + result.expires_in * 1000);
-      await Account.findByIdAndUpdate(account._id, {
+      await dbService.account.findByIdAndUpdate(account._id, {
         accessToken: result.access_token,
         tokenExpiresAt: newExpiresAt,
       });

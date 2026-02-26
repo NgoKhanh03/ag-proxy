@@ -42,9 +42,4 @@ const AccountSchema = new Schema<IAccount>({
   createdAt: { type: Date, default: Date.now },
 });
 
-if (mongoose.models.Account) {
-  delete mongoose.models.Account;
-  const schemas = (mongoose as any).modelSchemas;
-  if (schemas) delete schemas.Account;
-}
-export const Account = mongoose.model<IAccount>("Account", AccountSchema);
+export const Account = mongoose.models.Account || mongoose.model<IAccount>("Account", AccountSchema);

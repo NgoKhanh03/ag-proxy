@@ -1,7 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
-import { connectDB } from "./db";
-import { User } from "./models/user";
+import { dbService } from "./db-service";
 import bcrypt from "bcryptjs";
 
 const secret = new TextEncoder().encode(process.env.JWT_SECRET || "fallback-secret-change-me");
@@ -48,21 +47,21 @@ export async function requireAdmin(): Promise<SessionPayload> {
 }
 
 export async function hasAnyUsers(): Promise<boolean> {
-  await connectDB();
-  const count = await User.countDocuments();
+  await dbService.connect();
+  const count = await dbService.user.countDocuments();
   return count > 0;
 }
 
 export async function registerUser(username: string, password: string, role: "admin" | "user" = "user") {
-  await connectDB();
+  await dbService.connect();
   const hashed = await bcrypt.hash(password, 10);
-  const user = await User.create({ username, password: hashed, role });
+  const user = await dbService.user.create({ username, password: hashed, role });
   return user;
 }
 
 export async function loginUser(username: string, password: string) {
-  await connectDB();
-  const user = await User.findOne({ username });
+  await dbService.connect();
+  const user = await dbService.user.findOne({ username });
   if (!user) return null;
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) return null;

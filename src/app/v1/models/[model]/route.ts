@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { Account } from "@/lib/models/account";
+import { dbService } from "@/lib/db-service";
 import { isValidModel } from "@/lib/cloud-code";
 
 export async function GET(
@@ -10,8 +9,8 @@ export async function GET(
   const { model } = await params;
 
   try {
-    await connectDB();
-    const account = await Account.findOne({ status: "active", rotationEnabled: true }).sort({ rotationPriority: -1 });
+    await dbService.connect();
+    const account = await dbService.account.findOne({ status: "active", rotationEnabled: true }).sort({ rotationPriority: -1 });
     if (account?.accessToken) {
       const valid = await isValidModel(model, account.accessToken);
       if (!valid) {

@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { Account } from "@/lib/models/account";
+import { dbService } from "@/lib/db-service";
 import { listModels } from "@/lib/cloud-code";
 
 export async function GET() {
   try {
-    await connectDB();
-    const account = await Account.findOne({ status: "active", rotationEnabled: true }).sort({ rotationPriority: -1 });
+    await dbService.connect();
+    const account = await dbService.account.findOne({ status: "active", rotationEnabled: true }).sort({ rotationPriority: -1 });
     if (!account?.accessToken) {
       return NextResponse.json({ object: "list", data: [] });
     }

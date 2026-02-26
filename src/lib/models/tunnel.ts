@@ -26,15 +26,4 @@ const TunnelSchema = new Schema<ITunnel>({
   createdAt: { type: Date, default: Date.now },
 });
 
-
-if (mongoose.models.Tunnel) {
-  delete mongoose.models.Tunnel;
-  const schemas = (mongoose as any).modelSchemas;
-  if (schemas) delete schemas.Tunnel;
-}
-if (mongoose.models.TunnelConfig) {
-  delete mongoose.models.TunnelConfig;
-  const schemas = (mongoose as any).modelSchemas;
-  if (schemas) delete schemas.TunnelConfig;
-}
-export const Tunnel = mongoose.model<ITunnel>("Tunnel", TunnelSchema);
+export const Tunnel = mongoose.models.Tunnel || mongoose.model<ITunnel>("Tunnel", TunnelSchema);

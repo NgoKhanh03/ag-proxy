@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
+import { dbService } from "@/lib/db-service";
 import { hasAnyUsers } from "@/lib/auth";
-import { connectDB } from "@/lib/db";
-import { Account } from "@/lib/models/account";
 
 export async function GET() {
-  await connectDB();
+  await dbService.connect();
   const hasUsers = await hasAnyUsers();
-  const accountCount = await Account.countDocuments();
+  const accountCount = await dbService.account.countDocuments();
   return NextResponse.json({ needsSetup: !hasUsers, hasAccounts: accountCount > 0 });
 }

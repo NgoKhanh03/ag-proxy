@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { Account } from "@/lib/models/account";
+import { dbService } from "@/lib/db-service";
 import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_TOKEN_URL } from "@/lib/google-oauth";
 
 async function refreshAccessToken(token: string) {
@@ -20,12 +19,12 @@ async function refreshAccessToken(token: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
+    await dbService.connect();
     const { accountId } = await req.json();
     if (!accountId) {
       return NextResponse.json({ error: "accountId is required" }, { status: 400 });
     }
-    const account = await Account.findById(accountId);
+    const account = await dbService.account.findById(accountId);
     if (!account) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });
     }

@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { Tunnel } from "@/lib/models/tunnel";
+import { dbService } from "@/lib/db-service";
 
 export async function GET() {
-  await connectDB();
-  const tunnels = await Tunnel.find().sort({ createdAt: -1 });
+  await dbService.connect();
+  const tunnels = await dbService.tunnel.find().sort({ createdAt: -1 });
   return NextResponse.json(tunnels);
 }

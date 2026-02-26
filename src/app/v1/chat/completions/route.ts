@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { Tunnel } from "@/lib/models/tunnel";
-import { Account } from "@/lib/models/account";
+import { dbService } from "@/lib/db-service";
 import * as crypto from "crypto";
 import { getAntigravityUserAgent, getAntigravityVersion } from "@/lib/version";
-import { getValidAccessToken } from "@/lib/google-account";
+import { getValidAccessToken, fetchQuotas } from "@/lib/google-account";
 
 const V1_INTERNAL_URLS = [
   "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal",
@@ -51,12 +49,12 @@ async function getProjectId(account: { _id: unknown; email: string; accessToken:
   if (account.projectId) return account.projectId;
   const token = await getValidAccessToken(account);
   const { projectId, tier } = await fetchProjectInfo(token);
-  await Account.findByIdAndUpdate(account._id, { projectId, tier });
+  await dbService.account.findByIdAndUpdate(account._id, { projectId, tier });
   return projectId;
 }
 
 async function selectAccount(model: string, excludeIds: string[] = []) {
-  const accounts = await Account.find({
+  const accounts = await dbService.account.find({
     status: "active",
     rotationEnabled: true,
     ...(excludeIds.length > 0 ? { _id: { $nin: excludeIds } } : {}),
@@ -69,7 +67,7 @@ async function selectAccount(model: string, excludeIds: string[] = []) {
     if (q !== undefined && q <= 0) {
       const resetTime = acc.quotaResets?.[model];
       if (!resetTime || resetTime > now) continue;
-      Account.findByIdAndUpdate(acc._id, { tokensUsed: 0, [`quotas.${model}`]: 100 }).exec();
+      dbService.account.findByIdAndUpdate(acc._id, { tokensUsed: 0, [`quotas.${model}`]: 100 }).exec();
     }
     const usage = acc.tokensUsed || 0;
     if (usage < bestUsage) {
@@ -195,7 +193,7 @@ function parseSseResponse(sseText: string, model: string) {
 const MAX_ACCOUNT_RETRIES = 3;
 
 export async function POST(request: NextRequest) {
-  await connectDB();
+  await dbService.connect();
 
   const authHeader = request.headers.get("authorization");
   const apiKey = authHeader?.replace(/^Bearer\s+/i, "");
@@ -203,7 +201,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: { message: "Missing API key", type: "auth_error" } }, { status: 401 });
   }
 
-  const tunnel = await Tunnel.findOne({ apiKey, enabled: true });
+  const tunnel = await dbService.tunnel.findOne({ apiKey, enabled: true });
   if (!tunnel) {
     return NextResponse.json({ error: { message: "Invalid API key", type: "auth_error" } }, { status: 401 });
   }
@@ -224,7 +222,7 @@ export async function POST(request: NextRequest) {
     let account;
     if (tunnel.accountMode === "tied" && tunnel.tiedAccountId) {
       if (attempt > 0) break;
-      account = await Account.findOne({ _id: tunnel.tiedAccountId, status: "active" });
+      account = await dbService.account.findOne({ _id: tunnel.tiedAccountId, status: "active" });
       if (!account) {
         return NextResponse.json({ error: { message: "Tied account is unavailable", type: "server_error" } }, { status: 503 });
       }
@@ -259,10 +257,10 @@ export async function POST(request: NextRequest) {
 
         if (oai.usage.total_tokens > 0) {
           await Promise.all([
-            Tunnel.findByIdAndUpdate(tunnel._id, {
+            dbService.tunnel.findByIdAndUpdate(tunnel._id, {
               $inc: { tokensUsed: oai.usage.total_tokens },
             }),
-            Account.findByIdAndUpdate(account._id, {
+            dbService.account.findByIdAndUpdate(account._id, {
               $inc: { tokensUsed: oai.usage.total_tokens },
             }),
           ]);
@@ -284,8 +282,8 @@ export async function POST(request: NextRequest) {
             const oai = parseSseResponse(sseText, model);
             if (oai.usage.total_tokens > 0) {
               await Promise.all([
-                Tunnel.findByIdAndUpdate(tunnel._id, { $inc: { tokensUsed: oai.usage.total_tokens } }),
-                Account.findByIdAndUpdate(account._id, { $inc: { tokensUsed: oai.usage.total_tokens } }),
+                dbService.tunnel.findByIdAndUpdate(tunnel._id, { $inc: { tokensUsed: oai.usage.total_tokens } }),
+                dbService.account.findByIdAndUpdate(account._id, { $inc: { tokensUsed: oai.usage.total_tokens } }),
               ]);
             }
             return NextResponse.json(oai);
@@ -295,9 +293,14 @@ export async function POST(request: NextRequest) {
       }
 
       if (res.status === 429) {
-        await Account.findByIdAndUpdate(account._id, {
-          [`quotas.${model}`]: 0,
-        });
+        fetchQuotas(accessToken, projectId).then(({ quotas, resets }) => {
+          const update: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(quotas)) update[`quotas.${k}`] = v;
+          for (const [k, v] of Object.entries(resets)) update[`quotaResets.${k}`] = v;
+          if (Object.keys(update).length > 0) {
+            dbService.account.findByIdAndUpdate(account._id, update).exec();
+          }
+        }).catch(() => { });
         break;
       }
 

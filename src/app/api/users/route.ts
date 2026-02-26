@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { User } from "@/lib/models/user";
+import { dbService } from "@/lib/db-service";
 import { requireAdmin, registerUser } from "@/lib/auth";
 
 export async function GET() {
@@ -9,8 +8,8 @@ export async function GET() {
   } catch {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  await connectDB();
-  const users = await User.find().select("-password").sort({ createdAt: -1 });
+  await dbService.connect();
+  const users = await dbService.user.find().select("-password").sort({ createdAt: -1 });
   return NextResponse.json(users);
 }
 

@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { Account } from "@/lib/models/account";
+import { dbService } from "@/lib/db-service";
 import { refreshAccessToken, syncAccountData } from "@/lib/google-account";
 
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
+    await dbService.connect();
     const { accountId } = await req.json();
     if (!accountId) {
       return NextResponse.json({ error: "accountId is required" }, { status: 400 });
     }
-    const account = await Account.findById(accountId);
+    const account = await dbService.account.findById(accountId);
     if (!account) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });
     }
@@ -28,7 +27,7 @@ export async function POST(req: NextRequest) {
     account.tier = data.tier;
     account.projectId = data.projectId;
     if (Object.keys(data.quotas).length > 0) {
-      const wasEmpty = Object.values(account.quotas || {}).every((v) => v <= 0);
+      const wasEmpty = Object.values(account.quotas || {}).every((v) => (v as number) <= 0);
       const nowHasQuota = Object.values(data.quotas).some((v) => v > 0);
       if (wasEmpty && nowHasQuota) account.tokensUsed = 0;
       account.quotas = data.quotas;

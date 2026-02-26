@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_TOKEN_URL, GOOGLE_USERINFO_URL } from "@/lib/google-oauth";
 import { syncAccountData } from "@/lib/google-account";
 import { headers } from "next/headers";
-import { connectDB } from "@/lib/db";
-import { Account } from "@/lib/models/account";
+import { dbService } from "@/lib/db-service";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -51,9 +50,9 @@ export async function GET(request: NextRequest) {
     const userInfo = await userRes.json();
     const accountData = await syncAccountData(tokens.access_token);
 
-    await connectDB();
+    await dbService.connect();
 
-    const existing = await Account.findOne({ email: userInfo.email });
+    const existing = await dbService.account.findOne({ email: userInfo.email });
     if (existing) {
       existing.accessToken = tokens.access_token;
       if (tokens.refresh_token) existing.refreshToken = tokens.refresh_token;
@@ -68,7 +67,7 @@ export async function GET(request: NextRequest) {
       existing.lastSyncAt = new Date();
       await existing.save();
     } else {
-      await Account.create({
+      await dbService.account.create({
         email: userInfo.email,
         name: userInfo.name || userInfo.email,
         avatar: userInfo.picture || "",

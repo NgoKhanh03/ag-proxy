@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { Proxy } from "@/lib/models/proxy";
+import { dbService } from "@/lib/db-service";
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,7 +8,7 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "Expected an array of proxies" }, { status: 400 });
     }
-    await connectDB();
+    await dbService.connect();
     let created = 0;
     let skipped = 0;
     for (const item of items) {
@@ -17,12 +16,12 @@ export async function POST(req: NextRequest) {
         skipped++;
         continue;
       }
-      const exists = await Proxy.findOne({ host: item.host, port: item.port });
+      const exists = await dbService.proxy.findOne({ host: item.host, port: item.port });
       if (exists) {
         skipped++;
         continue;
       }
-      await Proxy.create({
+      await dbService.proxy.create({
         name: item.name || `${item.host}:${item.port}`,
         host: item.host,
         port: parseInt(item.port) || 8080,

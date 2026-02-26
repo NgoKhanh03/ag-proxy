@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { Account } from "@/lib/models/account";
+import { dbService } from "@/lib/db-service";
 
 export async function GET() {
-  await connectDB();
-  const accounts = await Account.find({}, {
+  await dbService.connect();
+  const accounts = await dbService.account.find({}, {
     email: 1, name: 1, refreshToken: 1, type: 1,
     rotationPriority: 1, rotationEnabled: 1, status: 1,
     _id: 0,

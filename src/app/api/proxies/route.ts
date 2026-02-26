@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import { Proxy } from "@/lib/models/proxy";
+import { dbService } from "@/lib/db-service";
 
 export async function GET() {
-  await connectDB();
-  const proxies = await Proxy.find().sort({ createdAt: -1 });
+  await dbService.connect();
+  const proxies = await dbService.proxy.find().sort({ createdAt: -1 });
   return NextResponse.json(proxies);
 }
 
 export async function POST(request: NextRequest) {
-  await connectDB();
+  await dbService.connect();
   const body = await request.json();
-  const proxy = await Proxy.create(body);
+  const proxy = await dbService.proxy.create(body);
   return NextResponse.json(proxy, { status: 201 });
 }
