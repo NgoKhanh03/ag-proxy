@@ -63,6 +63,12 @@ const MODEL_MAP: Record<string, string> = {
   "claude-opus-4-6-thinking": "claude-opus-4-6-thinking",
   "claude-sonnet-4-20250514": "claude-sonnet-4-6",
   "claude-opus-4-20250514": "claude-opus-4-6-thinking",
+  "claude-3-5-sonnet-20241022": "claude-sonnet-4-6",
+  "claude-3-5-haiku-20241022": "claude-sonnet-4-6",
+  "claude-3-opus-20240229": "claude-opus-4-6-thinking",
+  "claude-3-5-sonnet-latest": "claude-sonnet-4-6",
+  "claude-3-5-haiku-latest": "claude-sonnet-4-6",
+  "claude-3-opus-latest": "claude-opus-4-6-thinking",
 };
 
 function resolveModel(model: string): string {
@@ -373,7 +379,21 @@ function parseSseToAnthropic(sseText: string, model: string) {
     } catch { }
   }
 
-  const { content, hasToolCalls } = convertGooglePartsToAnthropic(allParts);
+  const { content: rawContent, hasToolCalls } = convertGooglePartsToAnthropic(allParts);
+  const content: AnyBlock[] = [];
+  for (const block of rawContent) {
+    if (block.type === "text") {
+      if (!block.text) continue;
+      const last = content[content.length - 1];
+      if (last && last.type === "text") {
+        last.text += block.text;
+      } else {
+        content.push({ ...block });
+      }
+    } else {
+      content.push(block);
+    }
+  }
   if (content.length === 0) content.push({ type: "text", text: "" });
 
   let stopReason = "end_turn";
@@ -415,15 +435,38 @@ function streamSseToAnthropic(sseText: string, model: string) {
     },
   })}\n`);
 
-  for (let i = 0; i < parsed.content.length; i++) {
-    const block = parsed.content[i];
+  type MergedBlock = { type: string; texts?: string[]; thinking?: string; signature?: string; id?: string; name?: string; input?: unknown };
+  const merged: MergedBlock[] = [];
+  for (const block of parsed.content) {
+    if (block.type === "text") {
+      if (!block.text) continue;
+      const last = merged[merged.length - 1];
+      if (last && last.type === "text") {
+        last.texts!.push(block.text);
+      } else {
+        merged.push({ type: "text", texts: [block.text] });
+      }
+    } else if (block.type === "thinking") {
+      merged.push({ type: "thinking", thinking: block.thinking, signature: block.signature });
+    } else if (block.type === "tool_use") {
+      merged.push({ type: "tool_use", id: block.id, name: block.name, input: block.input });
+    }
+  }
+
+  for (let i = 0; i < merged.length; i++) {
+    const block = merged[i];
     if (block.type === "thinking") {
       events.push(`event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: i, content_block: { type: "thinking", thinking: "" } })}\n`);
       events.push(`event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: i, delta: { type: "thinking_delta", thinking: block.thinking } })}\n`);
+      if (block.signature) {
+        events.push(`event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: i, delta: { type: "signature_delta", signature: block.signature } })}\n`);
+      }
       events.push(`event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: i })}\n`);
     } else if (block.type === "text") {
       events.push(`event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: i, content_block: { type: "text", text: "" } })}\n`);
-      events.push(`event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: i, delta: { type: "text_delta", text: block.text } })}\n`);
+      for (const chunk of block.texts!) {
+        events.push(`event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: i, delta: { type: "text_delta", text: chunk } })}\n`);
+      }
       events.push(`event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: i })}\n`);
     } else if (block.type === "tool_use") {
       events.push(`event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: i, content_block: { type: "tool_use", id: block.id, name: block.name, input: {} } })}\n`);
@@ -531,20 +574,21 @@ export async function POST(request: NextRequest) {
 
       lastStatus = res.status;
       lastError = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
-      const fs = await import("fs");
-      fs.appendFileSync("/tmp/ag-debug.log", `[${new Date().toISOString()}] upstream ${res.status}: ${JSON.stringify(lastError).slice(0, 2000)}\n`);
 
       if (res.status === 429) {
         await Account.findByIdAndUpdate(account._id, { [`quotas.${model}`]: 0 });
         break;
       }
       if (res.status >= 500) continue;
-      return NextResponse.json({ type: "error", error: { type: "api_error", message: (lastError as Record<string, string>)?.message || "Upstream error" } }, { status: lastStatus });
+      return NextResponse.json({ type: "error", error: { type: "invalid_request_error", message: (lastError as Record<string, string>)?.message || "Upstream error" } }, { status: 400 });
     }
   }
 
   if (!lastError) {
     return NextResponse.json({ type: "error", error: { type: "api_error", message: "No available account for this model" } }, { status: 503 });
+  }
+  if (lastStatus === 429) {
+    return NextResponse.json({ type: "error", error: { type: "invalid_request_error", message: "RESOURCE_EXHAUSTED: All accounts have exhausted quota. Please wait for reset." } }, { status: 400 });
   }
   return NextResponse.json({ type: "error", error: { type: "api_error", message: (lastError as Record<string, string>)?.message || "Upstream error" } }, { status: lastStatus });
 }
