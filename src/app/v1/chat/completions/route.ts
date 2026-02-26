@@ -3,6 +3,8 @@ import { connectDB } from "@/lib/db";
 import { Tunnel } from "@/lib/models/tunnel";
 import { Account } from "@/lib/models/account";
 import * as crypto from "crypto";
+import { getAntigravityUserAgent, getAntigravityVersion } from "@/lib/version";
+import { getValidAccessToken } from "@/lib/google-account";
 
 const V1_INTERNAL_URLS = [
   "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal",
@@ -10,26 +12,7 @@ const V1_INTERNAL_URLS = [
   "https://cloudcode-pa.googleapis.com/v1internal",
 ];
 
-const AG_VERSIONS = ["1.15.8", "1.16.0", "1.16.2", "1.16.5"];
-const CHROME_VERSIONS: Record<string, string> = {
-  "1.15.8": "130.0.6723.118",
-  "1.16.0": "132.0.6834.83",
-  "1.16.2": "132.0.6834.110",
-  "1.16.5": "132.0.6834.160",
-};
-const ELECTRON_VERSIONS: Record<string, string> = {
-  "1.15.8": "38.0.1",
-  "1.16.0": "39.1.2",
-  "1.16.2": "39.2.1",
-  "1.16.5": "39.2.3",
-};
-const PLATFORMS = [
-  "Macintosh; Intel Mac OS X 10_15_7",
-  "Windows NT 10.0; Win64; x64",
-  "X11; Linux x86_64",
-];
-
-const accountFingerprints = new Map<string, { machineId: string; sessionId: string; sessionTs: number; version: string; platform: string }>();
+const accountFingerprints = new Map<string, { machineId: string; sessionId: string; sessionTs: number }>();
 
 function getFingerprint(email: string) {
   const now = Date.now();
@@ -37,52 +20,23 @@ function getFingerprint(email: string) {
   if (existing && now - existing.sessionTs < 3600_000) return existing;
   const hash = crypto.createHash("sha256").update(email).digest("hex");
   const machineId = existing?.machineId || [hash.slice(0, 8), hash.slice(8, 12), hash.slice(12, 16), hash.slice(16, 20), hash.slice(20, 32)].join("-");
-  const versionIdx = parseInt(hash.slice(0, 2), 16) % AG_VERSIONS.length;
-  const platformIdx = parseInt(hash.slice(2, 4), 16) % PLATFORMS.length;
   const fp = {
     machineId,
     sessionId: crypto.randomUUID(),
     sessionTs: now,
-    version: AG_VERSIONS[versionIdx],
-    platform: PLATFORMS[platformIdx],
   };
   accountFingerprints.set(email, fp);
   return fp;
 }
 
-function buildUserAgent(fp: { version: string; platform: string }) {
-  const chrome = CHROME_VERSIONS[fp.version] || "132.0.6834.160";
-  const electron = ELECTRON_VERSIONS[fp.version] || "39.2.3";
-  return `Mozilla/5.0 (${fp.platform}) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/${fp.version} Chrome/${chrome} Electron/${electron} Safari/537.36`;
-}
-
-const MODEL_MAP: Record<string, string> = {
-  "gemini-3.1-pro-high": "gemini-3.1-pro-high",
-  "gemini-3.1-pro-low": "gemini-3.1-pro-high",
-  "gemini-3-pro-high": "gemini-3.1-pro-high",
-  "gemini-3-pro-low": "gemini-3.1-pro-high",
-  "gemini-3-flash": "gemini-3-flash",
-  "gemini-2.5-pro": "gemini-2.5-pro",
-  "gemini-2.5-flash": "gemini-2.5-flash",
-  "gemini-2.5-flash-lite": "gemini-2.5-flash",
-  "claude-sonnet-4-6": "claude-sonnet-4-6",
-  "claude-sonnet-4-6-thinking": "claude-sonnet-4-6-thinking",
-  "claude-opus-4-6-thinking": "claude-opus-4-6-thinking",
-};
-
-function resolveModel(model: string): string {
-  return MODEL_MAP[model] || model;
-}
-
-async function fetchProjectInfo(accessToken: string, email: string): Promise<{ projectId: string; tier: string }> {
-  const fp = getFingerprint(email);
+async function fetchProjectInfo(accessToken: string): Promise<{ projectId: string; tier: string }> {
   const url = "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:loadCodeAssist";
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${accessToken}`,
-      "User-Agent": buildUserAgent(fp),
+      "User-Agent": getAntigravityUserAgent(),
     },
     body: JSON.stringify({ metadata: { ideType: "ANTIGRAVITY" } }),
   });
@@ -93,9 +47,10 @@ async function fetchProjectInfo(accessToken: string, email: string): Promise<{ p
   return { projectId: data.cloudaicompanionProject, tier };
 }
 
-async function getProjectId(account: { _id: unknown; email: string; accessToken: string; projectId?: string }): Promise<string> {
+async function getProjectId(account: { _id: unknown; email: string; accessToken: string; refreshToken: string; tokenExpiresAt?: Date; projectId?: string }): Promise<string> {
   if (account.projectId) return account.projectId;
-  const { projectId, tier } = await fetchProjectInfo(account.accessToken, account.email);
+  const token = await getValidAccessToken(account);
+  const { projectId, tier } = await fetchProjectInfo(token);
   await Account.findByIdAndUpdate(account._id, { projectId, tier });
   return projectId;
 }
@@ -126,8 +81,6 @@ async function selectAccount(model: string, excludeIds: string[] = []) {
 }
 
 function buildV1InternalBody(messages: Array<{ role: string; content: string }>, model: string, projectId: string, opts: Record<string, unknown>) {
-  const apiModel = resolveModel(model);
-
   const contents = messages
     .filter((m) => m.role !== "system")
     .map((m) => ({
@@ -167,7 +120,7 @@ function buildV1InternalBody(messages: Array<{ role: string; content: string }>,
     project: projectId,
     requestId: `openai-${crypto.randomUUID()}`,
     request: innerRequest,
-    model: apiModel,
+    model,
     userAgent: "antigravity",
     requestType: "chat",
   };
@@ -178,10 +131,10 @@ function buildUpstreamHeaders(accessToken: string, model: string, email: string)
   const h: Record<string, string> = {
     "Content-Type": "application/json",
     "Authorization": `Bearer ${accessToken}`,
-    "User-Agent": buildUserAgent(fp),
+    "User-Agent": getAntigravityUserAgent(),
     "x-goog-api-client": "gl-node/18.18.2 fire/0.8.6 grpc/1.10.x",
     "x-client-name": "antigravity",
-    "x-client-version": fp.version,
+    "x-client-version": getAntigravityVersion(),
     "x-machine-id": fp.machineId,
     "x-vscode-sessionid": fp.sessionId,
   };
@@ -288,8 +241,9 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
+    const accessToken = await getValidAccessToken(account);
     const v1Body = buildV1InternalBody(messages, model, projectId, body);
-    const headers = buildUpstreamHeaders(account.accessToken, model, account.email);
+    const headers = buildUpstreamHeaders(accessToken, model, account.email);
 
     for (const baseUrl of V1_INTERNAL_URLS) {
       const url = `${baseUrl}:streamGenerateContent?alt=sse`;
@@ -320,6 +274,26 @@ export async function POST(request: NextRequest) {
       lastStatus = res.status;
       lastError = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
 
+      if (res.status === 401) {
+        const refreshed = await getValidAccessToken({ ...account.toObject(), accessToken: "", tokenExpiresAt: new Date(0) });
+        if (refreshed && refreshed !== accessToken) {
+          const retryHeaders = buildUpstreamHeaders(refreshed, model, account.email);
+          const retryRes = await fetch(url, { method: "POST", headers: retryHeaders, body: JSON.stringify(v1Body) });
+          if (retryRes.ok) {
+            const sseText = await retryRes.text();
+            const oai = parseSseResponse(sseText, model);
+            if (oai.usage.total_tokens > 0) {
+              await Promise.all([
+                Tunnel.findByIdAndUpdate(tunnel._id, { $inc: { tokensUsed: oai.usage.total_tokens } }),
+                Account.findByIdAndUpdate(account._id, { $inc: { tokensUsed: oai.usage.total_tokens } }),
+              ]);
+            }
+            return NextResponse.json(oai);
+          }
+        }
+        break;
+      }
+
       if (res.status === 429) {
         await Account.findByIdAndUpdate(account._id, {
           [`quotas.${model}`]: 0,
@@ -337,4 +311,3 @@ export async function POST(request: NextRequest) {
   }
   return NextResponse.json({ error: lastError }, { status: lastStatus });
 }
-

@@ -19,17 +19,10 @@ import { Plus, MoreHorizontal, Pencil, Trash2, RefreshCw, Copy, Key, Shuffle, Pl
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
 
-const AVAILABLE_MODELS = [
-  { value: "gemini-3.1-pro-high", label: "Gemini 3.1 Pro High" },
-  { value: "gemini-3.1-pro-low", label: "Gemini 3.1 Pro Low" },
-  { value: "gemini-3-flash", label: "Gemini 3 Flash" },
-  { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-  { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite" },
-  { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
-  { value: "claude-sonnet-4-6-thinking", label: "Claude Sonnet 4.6 TK" },
-  { value: "claude-opus-4-6-thinking", label: "Claude Opus 4.6 TK" },
-];
+interface ModelOption {
+  value: string;
+  label: string;
+}
 
 interface Account {
   _id: string;
@@ -54,7 +47,7 @@ interface Tunnel {
 
 const emptyForm = {
   name: "",
-  model: "gemini-2.5-flash",
+  model: "",
   apiKey: "",
   tokenLimit: 0,
   accountMode: "pool",
@@ -74,6 +67,7 @@ export default function TunnelsPage() {
   const { t: i18n } = useI18n();
   const [tunnels, setTunnels] = useState<Tunnel[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -91,6 +85,22 @@ export default function TunnelsPage() {
     ]);
     setTunnels(data);
     setAccounts(accs);
+    try {
+      const modelsRes = await fetch("/v1/models");
+      const modelsData = await modelsRes.json();
+      if (modelsData?.data?.length) {
+        const models = modelsData.data.map((m: { id: string; description?: string }) => ({
+          value: m.id,
+          label: m.description || m.id,
+        }));
+        setAvailableModels(models);
+        if (!form.model && models.length > 0) {
+          setForm((prev) => ({ ...prev, model: prev.model || models[0].value }));
+        }
+      }
+    } catch {
+      // pass
+    }
     setLoading(false);
   }, []);
 
@@ -247,7 +257,7 @@ export default function TunnelsPage() {
                   <Select value={form.model} onValueChange={(v) => setForm({ ...form, model: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {AVAILABLE_MODELS.map((m) => (
+                      {availableModels.map((m) => (
                         <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
                       ))}
                     </SelectContent>
@@ -361,7 +371,7 @@ export default function TunnelsPage() {
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="font-mono text-xs">
-                        {AVAILABLE_MODELS.find((m) => m.value === t.model)?.label || t.model}
+                        {availableModels.find((m) => m.value === t.model)?.label || t.model}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -441,7 +451,7 @@ export default function TunnelsPage() {
           <DialogHeader>
             <DialogTitle>Test Tunnel: {testTunnel?.name}</DialogTitle>
             <DialogDescription>
-              Send a test message through {AVAILABLE_MODELS.find((m) => m.value === testTunnel?.model)?.label || testTunnel?.model}
+              Send a test message through {availableModels.find((m) => m.value === testTunnel?.model)?.label || testTunnel?.model}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
