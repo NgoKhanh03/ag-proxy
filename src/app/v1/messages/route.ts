@@ -119,36 +119,144 @@ async function selectAccount(model: string, excludeIds: string[] = []) {
   return best;
 }
 
-interface AnthropicMessage {
-  role: string;
-  content: string | Array<{ type: string; text?: string }>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyBlock = any;
+
+const ALLOWED_SCHEMA_FIELDS = new Set(["type", "description", "properties", "required", "items", "enum", "title"]);
+
+function sanitizeSchema(schema: AnyBlock): AnyBlock {
+  if (!schema || typeof schema !== "object") {
+    return { type: "OBJECT", properties: { reason: { type: "STRING", description: "Reason for calling this tool" } }, required: ["reason"] };
+  }
+  const result: AnyBlock = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === "const") { result.enum = [value]; continue; }
+    if (!ALLOWED_SCHEMA_FIELDS.has(key)) continue;
+    if (key === "properties" && value && typeof value === "object") {
+      result.properties = {};
+      for (const [pk, pv] of Object.entries(value as Record<string, unknown>)) {
+        result.properties[pk] = sanitizeSchema(pv);
+      }
+    } else if (key === "items" && value && typeof value === "object") {
+      result.items = sanitizeSchema(value);
+    } else {
+      result[key] = value;
+    }
+  }
+  if (!result.type) result.type = "object";
+  if (typeof result.type === "string") {
+    const typeMap: Record<string, string> = { string: "STRING", number: "NUMBER", integer: "INTEGER", boolean: "BOOLEAN", array: "ARRAY", object: "OBJECT" };
+    result.type = typeMap[result.type.toLowerCase()] || result.type.toUpperCase();
+  }
+  if (result.type === "OBJECT" && (!result.properties || Object.keys(result.properties).length === 0)) {
+    result.properties = { reason: { type: "STRING", description: "Reason for calling this tool" } };
+    result.required = ["reason"];
+  }
+  return result;
 }
 
-function extractText(content: string | Array<{ type: string; text?: string }>): string {
-  if (typeof content === "string") return content;
-  return content.filter((b) => b.type === "text").map((b) => b.text || "").join("");
+function cleanCacheControl(messages: AnyBlock[]): AnyBlock[] {
+  return messages.map((msg: AnyBlock) => {
+    if (!Array.isArray(msg.content)) return msg;
+    return {
+      ...msg,
+      content: msg.content.map((block: AnyBlock) => {
+        if (!block || typeof block !== "object") return block;
+        const { cache_control, ...rest } = block;
+        void cache_control;
+        return rest;
+      }),
+    };
+  });
+}
+
+function convertContentToParts(content: AnyBlock, isClaudeModel: boolean): AnyBlock[] {
+  if (typeof content === "string") return [{ text: content }];
+  if (!Array.isArray(content)) return [{ text: String(content) }];
+
+  const parts: AnyBlock[] = [];
+  for (const block of content) {
+    if (!block) continue;
+    if (block.type === "text") {
+      if (block.text && block.text.trim()) {
+        parts.push({ text: block.text });
+      }
+    } else if (block.type === "tool_use") {
+      const fc: AnyBlock = { name: block.name, args: block.input || {} };
+      if (isClaudeModel && block.id) fc.id = block.id;
+      parts.push({ functionCall: fc });
+    } else if (block.type === "tool_result") {
+      let responseContent = block.content;
+      if (typeof responseContent === "string") {
+        responseContent = { result: responseContent };
+      } else if (Array.isArray(responseContent)) {
+        const texts = responseContent.filter((c: AnyBlock) => c.type === "text").map((c: AnyBlock) => c.text).join("\n");
+        responseContent = { result: texts || "" };
+      }
+      const fr: AnyBlock = { name: block.tool_use_id || "unknown", response: responseContent };
+      if (isClaudeModel && block.tool_use_id) fr.id = block.tool_use_id;
+      parts.push({ functionResponse: fr });
+    } else if (block.type === "thinking") {
+      if (block.signature && block.signature.length >= 50) {
+        parts.push({ text: block.thinking, thought: true, thoughtSignature: block.signature });
+      }
+    } else if (block.type === "image" && block.source?.type === "base64") {
+      parts.push({ inlineData: { mimeType: block.source.media_type, data: block.source.data } });
+    }
+  }
+  return parts;
+}
+
+function anthropicToolsToGoogle(tools: AnyBlock[]) {
+  if (!tools?.length) return undefined;
+  const declarations = tools.map((t: AnyBlock, idx: number) => {
+    const name = (t.name || `tool-${idx}`).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+    return {
+      name,
+      description: t.description || "",
+      parameters: sanitizeSchema(t.input_schema),
+    };
+  });
+  return [{ functionDeclarations: declarations }];
 }
 
 function buildV1InternalBody(
-  messages: AnthropicMessage[],
-  system: string | undefined,
+  body: AnyBlock,
   model: string,
   projectId: string,
-  maxTokens: number,
-  temperature?: number,
 ) {
   const apiModel = resolveModel(model);
+  const isClaudeModel = apiModel.includes("claude");
+  const isThinking = apiModel.includes("thinking");
+  const messages = cleanCacheControl(body.messages || []);
 
-  const contents = messages.map((m) => ({
-    role: m.role === "assistant" ? "model" : "user",
-    parts: [{ text: extractText(m.content) }],
-  }));
+  const contents: AnyBlock[] = [];
+  for (const msg of messages) {
+    const role = msg.role === "assistant" ? "model" : "user";
+    const parts = convertContentToParts(msg.content, isClaudeModel);
+    if (parts.length === 0) parts.push({ text: "." });
+    contents.push({ role, parts });
+  }
 
   const generationConfig: Record<string, unknown> = {
-    temperature: temperature ?? 1.0,
-    topP: 0.95,
-    maxOutputTokens: maxTokens,
+    maxOutputTokens: body.max_tokens || 16384,
   };
+  if (body.temperature !== undefined) generationConfig.temperature = body.temperature;
+  if (body.top_p !== undefined) generationConfig.topP = body.top_p;
+  if (body.top_k !== undefined) generationConfig.topK = body.top_k;
+
+  if (isThinking) {
+    if (isClaudeModel) {
+      const thinkingConfig: AnyBlock = { include_thoughts: true };
+      if (body.thinking?.budget_tokens) {
+        thinkingConfig.thinking_budget = body.thinking.budget_tokens;
+        if ((generationConfig.maxOutputTokens as number) <= thinkingConfig.thinking_budget) {
+          generationConfig.maxOutputTokens = thinkingConfig.thinking_budget + 8192;
+        }
+      }
+      generationConfig.thinkingConfig = thinkingConfig;
+    }
+  }
 
   const innerRequest: Record<string, unknown> = {
     contents,
@@ -162,17 +270,31 @@ function buildV1InternalBody(
     ],
   };
 
+  const system = typeof body.system === "string"
+    ? body.system
+    : Array.isArray(body.system)
+      ? body.system.filter((s: AnyBlock) => s.type === "text").map((s: AnyBlock) => s.text || "").join("\n")
+      : undefined;
+
   if (system) {
     innerRequest.systemInstruction = { role: "user", parts: [{ text: system }] };
   }
 
+  const googleTools = anthropicToolsToGoogle(body.tools);
+  if (googleTools) {
+    innerRequest.tools = googleTools;
+    if (isClaudeModel) {
+      innerRequest.toolConfig = { functionCallingConfig: { mode: "VALIDATED" } };
+    }
+  }
+
   return {
     project: projectId,
-    requestId: `claude-${crypto.randomUUID()}`,
+    requestId: `agent-${crypto.randomUUID()}`,
     request: innerRequest,
     model: apiModel,
     userAgent: "antigravity",
-    requestType: "chat",
+    requestType: "agent",
   };
 }
 
@@ -188,49 +310,75 @@ function buildUpstreamHeaders(accessToken: string, model: string, email: string)
     "x-machine-id": fp.machineId,
     "x-vscode-sessionid": fp.sessionId,
   };
-  if (model.includes("claude")) {
-    h["anthropic-beta"] = "claude-code-20250219";
+  if (model.includes("claude") && model.includes("thinking")) {
+    h["anthropic-beta"] = "interleaved-thinking-2025-05-14";
   }
   return h;
 }
 
+function convertGooglePartsToAnthropic(parts: AnyBlock[]) {
+  const content: AnyBlock[] = [];
+  let hasToolCalls = false;
+
+  for (const part of parts) {
+    if (part.text !== undefined) {
+      if (part.thought === true) {
+        content.push({
+          type: "thinking",
+          thinking: part.text,
+          signature: part.thoughtSignature || "",
+        });
+      } else {
+        content.push({ type: "text", text: part.text });
+      }
+    } else if (part.functionCall) {
+      const toolId = part.functionCall.id || `toolu_${crypto.randomBytes(12).toString("hex")}`;
+      content.push({
+        type: "tool_use",
+        id: toolId,
+        name: part.functionCall.name,
+        input: part.functionCall.args || {},
+      });
+      hasToolCalls = true;
+    }
+  }
+
+  return { content, hasToolCalls };
+}
+
 function parseSseToAnthropic(sseText: string, model: string) {
-  let fullText = "";
-  let thinkingText = "";
   let promptTokens = 0;
   let completionTokens = 0;
+  let cachedTokens = 0;
+  const allParts: AnyBlock[] = [];
+  let finishReason = "";
 
-  const lines = sseText.split("\n");
-  for (const line of lines) {
+  for (const line of sseText.split("\n")) {
     if (!line.startsWith("data: ")) continue;
     const jsonStr = line.slice(6).trim();
     if (!jsonStr || jsonStr === "[DONE]") continue;
     try {
       const chunk = JSON.parse(jsonStr);
       const inner = chunk.response || chunk;
-      const parts = inner?.candidates?.[0]?.content?.parts;
-      if (parts) {
-        for (const p of parts) {
-          if (p.thought && p.text) {
-            thinkingText += p.text;
-          } else if (p.text) {
-            fullText += p.text;
-          }
-        }
-      }
+      const candidate = inner?.candidates?.[0];
+      const parts = candidate?.content?.parts;
+      if (parts) allParts.push(...parts);
+      if (candidate?.finishReason) finishReason = candidate.finishReason;
       const meta = inner?.usageMetadata;
       if (meta) {
         promptTokens = meta.promptTokenCount || promptTokens;
         completionTokens = meta.candidatesTokenCount || completionTokens;
+        cachedTokens = meta.cachedContentTokenCount || cachedTokens;
       }
     } catch { }
   }
 
-  const content: Array<Record<string, unknown>> = [];
-  if (thinkingText) {
-    content.push({ type: "thinking", thinking: thinkingText });
-  }
-  content.push({ type: "text", text: fullText });
+  const { content, hasToolCalls } = convertGooglePartsToAnthropic(allParts);
+  if (content.length === 0) content.push({ type: "text", text: "" });
+
+  let stopReason = "end_turn";
+  if (finishReason === "MAX_TOKENS") stopReason = "max_tokens";
+  else if (finishReason === "TOOL_USE" || hasToolCalls) stopReason = "tool_use";
 
   return {
     id: `msg_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`,
@@ -238,117 +386,56 @@ function parseSseToAnthropic(sseText: string, model: string) {
     role: "assistant",
     content,
     model,
-    stop_reason: "end_turn",
+    stop_reason: stopReason,
     stop_sequence: null,
     usage: {
-      input_tokens: promptTokens,
+      input_tokens: promptTokens - cachedTokens,
       output_tokens: completionTokens,
+      cache_read_input_tokens: cachedTokens,
+      cache_creation_input_tokens: 0,
     },
   };
 }
 
 function streamSseToAnthropic(sseText: string, model: string) {
-  const msgId = `msg_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
+  const parsed = parseSseToAnthropic(sseText, model);
   const events: string[] = [];
-
-  let fullText = "";
-  let thinkingText = "";
-  let promptTokens = 0;
-  let completionTokens = 0;
 
   events.push(`event: message_start\ndata: ${JSON.stringify({
     type: "message_start",
     message: {
-      id: msgId,
+      id: parsed.id,
       type: "message",
       role: "assistant",
       content: [],
       model,
       stop_reason: null,
       stop_sequence: null,
-      usage: { input_tokens: 0, output_tokens: 0 },
+      usage: { input_tokens: parsed.usage.input_tokens, output_tokens: 0, cache_read_input_tokens: parsed.usage.cache_read_input_tokens, cache_creation_input_tokens: 0 },
     },
   })}\n`);
 
-  const lines = sseText.split("\n");
-  let blockIdx = 0;
-  let thinkingStarted = false;
-  let textStarted = false;
-
-  for (const line of lines) {
-    if (!line.startsWith("data: ")) continue;
-    const jsonStr = line.slice(6).trim();
-    if (!jsonStr || jsonStr === "[DONE]") continue;
-    try {
-      const chunk = JSON.parse(jsonStr);
-      const inner = chunk.response || chunk;
-      const parts = inner?.candidates?.[0]?.content?.parts;
-      if (parts) {
-        for (const p of parts) {
-          if (p.thought && p.text) {
-            if (!thinkingStarted) {
-              events.push(`event: content_block_start\ndata: ${JSON.stringify({
-                type: "content_block_start",
-                index: blockIdx,
-                content_block: { type: "thinking", thinking: "" },
-              })}\n`);
-              thinkingStarted = true;
-            }
-            events.push(`event: content_block_delta\ndata: ${JSON.stringify({
-              type: "content_block_delta",
-              index: blockIdx,
-              delta: { type: "thinking_delta", thinking: p.text },
-            })}\n`);
-            thinkingText += p.text;
-          } else if (p.text) {
-            if (thinkingStarted && !textStarted) {
-              events.push(`event: content_block_stop\ndata: ${JSON.stringify({
-                type: "content_block_stop",
-                index: blockIdx,
-              })}\n`);
-              blockIdx++;
-            }
-            if (!textStarted) {
-              events.push(`event: content_block_start\ndata: ${JSON.stringify({
-                type: "content_block_start",
-                index: blockIdx,
-                content_block: { type: "text", text: "" },
-              })}\n`);
-              textStarted = true;
-            }
-            events.push(`event: content_block_delta\ndata: ${JSON.stringify({
-              type: "content_block_delta",
-              index: blockIdx,
-              delta: { type: "text_delta", text: p.text },
-            })}\n`);
-            fullText += p.text;
-          }
-        }
-      }
-      const meta = inner?.usageMetadata;
-      if (meta) {
-        promptTokens = meta.promptTokenCount || promptTokens;
-        completionTokens = meta.candidatesTokenCount || completionTokens;
-      }
-    } catch { }
+  for (let i = 0; i < parsed.content.length; i++) {
+    const block = parsed.content[i];
+    if (block.type === "thinking") {
+      events.push(`event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: i, content_block: { type: "thinking", thinking: "" } })}\n`);
+      events.push(`event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: i, delta: { type: "thinking_delta", thinking: block.thinking } })}\n`);
+      events.push(`event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: i })}\n`);
+    } else if (block.type === "text") {
+      events.push(`event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: i, content_block: { type: "text", text: "" } })}\n`);
+      events.push(`event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: i, delta: { type: "text_delta", text: block.text } })}\n`);
+      events.push(`event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: i })}\n`);
+    } else if (block.type === "tool_use") {
+      events.push(`event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: i, content_block: { type: "tool_use", id: block.id, name: block.name, input: {} } })}\n`);
+      events.push(`event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: i, delta: { type: "input_json_delta", partial_json: JSON.stringify(block.input) } })}\n`);
+      events.push(`event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: i })}\n`);
+    }
   }
 
-  if (textStarted || thinkingStarted) {
-    events.push(`event: content_block_stop\ndata: ${JSON.stringify({
-      type: "content_block_stop",
-      index: blockIdx,
-    })}\n`);
-  }
-
-  events.push(`event: message_delta\ndata: ${JSON.stringify({
-    type: "message_delta",
-    delta: { stop_reason: "end_turn", stop_sequence: null },
-    usage: { output_tokens: completionTokens },
-  })}\n`);
-
+  events.push(`event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: parsed.stop_reason, stop_sequence: null }, usage: { output_tokens: parsed.usage.output_tokens } })}\n`);
   events.push(`event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}\n`);
 
-  return { events, promptTokens, completionTokens, fullText, thinkingText };
+  return { events, usage: parsed.usage };
 }
 
 const MAX_ACCOUNT_RETRIES = 3;
@@ -373,9 +460,6 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const requestedModel = body.model || tunnel.model;
   const model = resolveModel(requestedModel);
-  const messages: AnthropicMessage[] = body.messages || [];
-  const system = typeof body.system === "string" ? body.system : Array.isArray(body.system) ? body.system.map((s: { text?: string }) => s.text || "").join("\n") : undefined;
-  const maxTokens = body.max_tokens || 16384;
   const stream = body.stream === true;
 
   const triedAccountIds: string[] = [];
@@ -403,71 +487,57 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    const v1Body = buildV1InternalBody(messages, system, model, projectId, maxTokens, body.temperature);
+    const v1Body = buildV1InternalBody(body, model, projectId);
     const headers = buildUpstreamHeaders(account.accessToken, model, account.email);
 
     for (const baseUrl of V1_INTERNAL_URLS) {
       const url = `${baseUrl}:streamGenerateContent?alt=sse`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(v1Body),
-      });
+      const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(v1Body) });
 
       if (res.ok) {
         const sseText = await res.text();
 
         if (stream) {
-          const { events, promptTokens, completionTokens } = streamSseToAnthropic(sseText, requestedModel);
-          const totalTokens = promptTokens + completionTokens;
-
+          const { events, usage } = streamSseToAnthropic(sseText, requestedModel);
+          const totalTokens = usage.input_tokens + usage.output_tokens;
           if (totalTokens > 0) {
-            await Promise.all([
+            Promise.all([
               Tunnel.findByIdAndUpdate(tunnel._id, { $inc: { tokensUsed: totalTokens } }),
               Account.findByIdAndUpdate(account._id, { $inc: { tokensUsed: totalTokens } }),
-            ]);
+            ]).catch(() => { });
           }
-
           const encoder = new TextEncoder();
           const readable = new ReadableStream({
             start(controller) {
-              for (const event of events) {
-                controller.enqueue(encoder.encode(event + "\n"));
-              }
+              for (const event of events) controller.enqueue(encoder.encode(event + "\n"));
               controller.close();
             },
           });
-
           return new Response(readable, {
-            headers: {
-              "Content-Type": "text/event-stream",
-              "Cache-Control": "no-cache",
-              "Connection": "keep-alive",
-            },
+            headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" },
           });
         }
 
         const anthropicResponse = parseSseToAnthropic(sseText, requestedModel);
         const totalTokens = anthropicResponse.usage.input_tokens + anthropicResponse.usage.output_tokens;
-
         if (totalTokens > 0) {
-          await Promise.all([
+          Promise.all([
             Tunnel.findByIdAndUpdate(tunnel._id, { $inc: { tokensUsed: totalTokens } }),
             Account.findByIdAndUpdate(account._id, { $inc: { tokensUsed: totalTokens } }),
-          ]);
+          ]).catch(() => { });
         }
-
         return NextResponse.json(anthropicResponse);
       }
 
       lastStatus = res.status;
       lastError = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
+      const fs = await import("fs");
+      fs.appendFileSync("/tmp/ag-debug.log", `[${new Date().toISOString()}] upstream ${res.status}: ${JSON.stringify(lastError).slice(0, 2000)}\n`);
 
       if (res.status === 429) {
         await Account.findByIdAndUpdate(account._id, { [`quotas.${model}`]: 0 });
         break;
       }
-
       if (res.status >= 500) continue;
       return NextResponse.json({ type: "error", error: { type: "api_error", message: (lastError as Record<string, string>)?.message || "Upstream error" } }, { status: lastStatus });
     }
