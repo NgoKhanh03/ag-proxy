@@ -8,6 +8,7 @@ export interface IAccount extends Document {
   type: "google" | "anthropic";
   accessToken: string;
   refreshToken: string;
+  tokenExpiresAt: Date;
   projectId: string;
   quotas: Record<string, number>;
   quotaResets: Record<string, string>;
@@ -28,6 +29,7 @@ const AccountSchema = new Schema<IAccount>({
   type: { type: String, enum: ["google", "anthropic"], default: "google" },
   accessToken: { type: String, default: "" },
   refreshToken: { type: String, default: "" },
+  tokenExpiresAt: { type: Date, default: () => new Date(0) },
   projectId: { type: String, default: "" },
   quotas: { type: Schema.Types.Mixed, default: () => ({}) },
   quotaResets: { type: Schema.Types.Mixed, default: () => ({}) },

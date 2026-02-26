@@ -34,6 +34,48 @@ export async function refreshAccessToken(refreshToken: string) {
   return res.json() as Promise<{ access_token: string; expires_in: number }>;
 }
 
+const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+const refreshLocks = new Map<string, Promise<string>>();
+
+export async function getValidAccessToken(account: {
+  _id: unknown;
+  email: string;
+  accessToken: string;
+  refreshToken: string;
+  tokenExpiresAt?: Date;
+}): Promise<string> {
+  const expiresAt = account.tokenExpiresAt ? new Date(account.tokenExpiresAt).getTime() : 0;
+  const needsRefresh = !account.accessToken || Date.now() > expiresAt - TOKEN_REFRESH_MARGIN_MS;
+
+  if (!needsRefresh) return account.accessToken;
+  if (!account.refreshToken) return account.accessToken;
+
+  const accountId = String(account._id);
+  const existing = refreshLocks.get(accountId);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    try {
+      const result = await refreshAccessToken(account.refreshToken);
+      if (!result) return account.accessToken;
+
+      const { Account } = await import("./models/account");
+      const newExpiresAt = new Date(Date.now() + result.expires_in * 1000);
+      await Account.findByIdAndUpdate(account._id, {
+        accessToken: result.access_token,
+        tokenExpiresAt: newExpiresAt,
+      });
+      account.accessToken = result.access_token;
+      return result.access_token;
+    } finally {
+      refreshLocks.delete(accountId);
+    }
+  })();
+
+  refreshLocks.set(accountId, promise);
+  return promise;
+}
+
 type AccountTier = "free" | "pro" | "ultra";
 
 export async function fetchTierAndProject(accessToken: string): Promise<{ projectId: string; tier: AccountTier }> {

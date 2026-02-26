@@ -4,6 +4,7 @@ import { Tunnel } from "@/lib/models/tunnel";
 import { Account } from "@/lib/models/account";
 import * as crypto from "crypto";
 import { getAntigravityUserAgent, getAntigravityVersion } from "@/lib/version";
+import { getValidAccessToken } from "@/lib/google-account";
 
 const V1_INTERNAL_URLS = [
   "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal",
@@ -45,9 +46,10 @@ async function fetchProjectInfo(accessToken: string): Promise<{ projectId: strin
   return { projectId: data.cloudaicompanionProject };
 }
 
-async function getProjectId(account: { _id: unknown; email: string; accessToken: string; projectId?: string }): Promise<string> {
+async function getProjectId(account: { _id: unknown; email: string; accessToken: string; refreshToken: string; tokenExpiresAt?: Date; projectId?: string }): Promise<string> {
   if (account.projectId) return account.projectId;
-  const { projectId } = await fetchProjectInfo(account.accessToken);
+  const token = await getValidAccessToken(account);
+  const { projectId } = await fetchProjectInfo(token);
   await Account.findByIdAndUpdate(account._id, { projectId });
   return projectId;
 }
@@ -481,8 +483,9 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
+    const accessToken = await getValidAccessToken(account);
     const v1Body = buildV1InternalBody(body, model, projectId);
-    const headers = buildUpstreamHeaders(account.accessToken, model, account.email);
+    const headers = buildUpstreamHeaders(accessToken, model, account.email);
 
     for (const baseUrl of V1_INTERNAL_URLS) {
       const url = `${baseUrl}:streamGenerateContent?alt=sse`;
@@ -526,6 +529,46 @@ export async function POST(request: NextRequest) {
       lastStatus = res.status;
       lastError = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
 
+      if (res.status === 401) {
+        const refreshed = await getValidAccessToken({ ...account.toObject(), accessToken: "", tokenExpiresAt: new Date(0) });
+        if (refreshed && refreshed !== accessToken) {
+          const retryHeaders = buildUpstreamHeaders(refreshed, model, account.email);
+          const retryRes = await fetch(url, { method: "POST", headers: retryHeaders, body: JSON.stringify(v1Body) });
+          if (retryRes.ok) {
+            const sseText = await retryRes.text();
+            if (stream) {
+              const { events, usage } = streamSseToAnthropic(sseText, requestedModel);
+              const totalTokens = usage.input_tokens + usage.output_tokens;
+              if (totalTokens > 0) {
+                Promise.all([
+                  Tunnel.findByIdAndUpdate(tunnel._id, { $inc: { tokensUsed: totalTokens } }),
+                  Account.findByIdAndUpdate(account._id, { $inc: { tokensUsed: totalTokens } }),
+                ]).catch(() => { });
+              }
+              const encoder = new TextEncoder();
+              const readable = new ReadableStream({
+                start(controller) {
+                  for (const event of events) controller.enqueue(encoder.encode(event + "\n"));
+                  controller.close();
+                },
+              });
+              return new Response(readable, {
+                headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" },
+              });
+            }
+            const anthropicResponse = parseSseToAnthropic(sseText, requestedModel);
+            const totalTokens = anthropicResponse.usage.input_tokens + anthropicResponse.usage.output_tokens;
+            if (totalTokens > 0) {
+              Promise.all([
+                Tunnel.findByIdAndUpdate(tunnel._id, { $inc: { tokensUsed: totalTokens } }),
+                Account.findByIdAndUpdate(account._id, { $inc: { tokensUsed: totalTokens } }),
+              ]).catch(() => { });
+            }
+            return NextResponse.json(anthropicResponse);
+          }
+        }
+        break;
+      }
       if (res.status === 429) {
         await Account.findByIdAndUpdate(account._id, { [`quotas.${model}`]: 0 });
         break;
