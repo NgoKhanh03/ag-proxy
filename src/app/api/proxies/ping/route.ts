@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
+  // ===== DEBUG: Log toàn bộ request =====
+  const rawBody = await req.text();
+  console.log("=== [DEBUG] /api/proxies/ping ===");
+  console.log("Method:", req.method);
+  console.log("URL:", req.url);
+  console.log("Headers:", Object.fromEntries(req.headers.entries()));
+  console.log("Raw Body:", rawBody);
+  let parsedBody: any = {};
   try {
-    const { host, port, protocol, username, password } = await req.json();
+    parsedBody = JSON.parse(rawBody);
+    console.log("Parsed Body:", JSON.stringify(parsedBody, null, 2));
+  } catch {
+    console.log("Body is not valid JSON");
+  }
+  console.log("=================================");
+  // ===== END DEBUG =====
+
+  try {
+    const { host, port, protocol, username, password } = parsedBody;
     if (!host || !port) {
       return NextResponse.json({ error: "host and port required" }, { status: 400 });
     }
